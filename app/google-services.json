@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "385319062920",
+    "project_id": "refresh-soda-app-7f016",
+    "storage_bucket": "refresh-soda-app-7f016.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:385319062920:android:f147c50ea3bd617e593e3d",
+        "android_client_info": {
+          "package_name": "com.refreshsoda.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCWv7KJi1Ccz0XhT4M1uLQmIG0VelRU4Gs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
