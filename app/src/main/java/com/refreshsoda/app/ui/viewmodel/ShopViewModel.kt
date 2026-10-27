@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.refreshsoda.app.data.firebase.FirebaseSyncService
 import com.refreshsoda.app.data.local.ShopDao
 import com.refreshsoda.app.data.model.*
+import com.refreshsoda.app.data.security.SecurityUtils
 import com.refreshsoda.app.ui.i18n.AppLanguage
 import com.refreshsoda.app.ui.i18n.AppStrings
 import kotlinx.coroutines.flow.*
@@ -27,6 +28,17 @@ data class TopItemStats(
     val name: String = "N/A",
     val pieces: Int = 0,
     val revenue: Double = 0.0
+)
+
+data class IceCreamProfitStats(
+    val totalSalesRevenue: Double = 0.0,
+    val totalCostOfGoods: Double = 0.0,
+    val grossProfit: Double = 0.0,
+    val marginPercent: Double = 0.0,
+    val hoccoRevenue: Double = 0.0,
+    val hoccoProfit: Double = 0.0,
+    val vadilalRevenue: Double = 0.0,
+    val vadilalProfit: Double = 0.0
 )
 
 class ShopViewModel(
@@ -60,6 +72,40 @@ class ShopViewModel(
     val settlements = dao.getAllSettlements().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val auditLogs = dao.getAllAuditLogs().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // Multi-User Authentication Flows
+    val allUsers = dao.getAllUsers().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    private val _currentUser = MutableStateFlow<UserAccount?>(null)
+    val currentUser = _currentUser.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            dao.getAllUsers().first().let { userList ->
+                if (userList.isEmpty()) {
+                    val defaultOwner = UserAccount(
+                        id = "user_owner",
+                        name = "Dipak Patil",
+                        emailOrPhone = "dipak@gmail.com",
+                        password = "123",
+                        role = "OWNER",
+                        shopName = "Refresh Soda & Ice-cream",
+                        phone = "9876543210"
+                    )
+                    val defaultStaff = UserAccount(
+                        id = "user_staff",
+                        name = "Ramesh (Counter)",
+                        emailOrPhone = "staff",
+                        password = "123",
+                        role = "STAFF",
+                        shopName = "Refresh Soda & Ice-cream",
+                        phone = "9123456780"
+                    )
+                    dao.insertUser(defaultOwner)
+                    dao.insertUser(defaultStaff)
+                }
+            }
+        }
+    }
+
     // POS Cart State
     private val _cart = MutableStateFlow<List<CartItem>>(emptyList())
     val cart = _cart.asStateFlow()
@@ -69,6 +115,39 @@ class ShopViewModel(
 
     private val _openingCash = MutableStateFlow(500.0) // Default morning cash
     val openingCash = _openingCash.asStateFlow()
+
+    // Sale Undo State (Holds last sale for 5-second undo snackbar)
+    private val _lastSaleForUndo = MutableStateFlow<SaleTransaction?>(null)
+    val lastSaleForUndo = _lastSaleForUndo.asStateFlow()
+
+    // Quick Favourites / Top 8 Products for Fast POS
+    val topFavoriteProducts = combine(sales, products) { salesList, productList ->
+        val countMap = mutableMapOf<String, Int>()
+        salesList.forEach { sale ->
+            if (sale.itemsDetails.isNotBlank()) {
+                sale.itemsDetails.split(";").forEach { itemStr ->
+                    val parts = itemStr.split("|")
+                    if (parts.size >= 3) {
+                        val name = parts[1].trim()
+                        val qty = parts[2].toIntOrNull() ?: 1
+                        countMap[name] = (countMap[name] ?: 0) + qty
+                    }
+                }
+            }
+        }
+        val favList = mutableListOf<Product>()
+        if (countMap.isNotEmpty()) {
+            val sortedNames = countMap.entries.sortedByDescending { it.value }.map { it.key }
+            sortedNames.take(8).forEach { name ->
+                val prod = productList.firstOrNull { it.name.equals(name, ignoreCase = true) }
+                if (prod != null) favList.add(prod)
+            }
+        }
+        if (favList.size < 8) {
+            productList.filter { !favList.contains(it) }.take(8 - favList.size).forEach { favList.add(it) }
+        }
+        favList
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // ---------------- DASHBOARD CALCULATIONS ----------------
     // Total Sales (Revenue from all modes)
@@ -142,6 +221,100 @@ class ShopViewModel(
         val upiRepay = repayList.filter { it.paymentMode == "UPI" }.sumOf { it.amount }
         upiSale + upiRepay
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
+    // Supplier Purchases & Distributor Bills
+    val supplierPurchases = dao.getAllSupplierPurchases().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val totalSupplierDebt = supplierPurchases.map { list ->
+        list.filter { it.paymentStatus != "PAID" }.sumOf { it.totalAmount - it.paidAmount }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
+    // Ice-Cream Profit Analytics (Calculating gross profit from sold ice-cream)
+    val iceCreamProfitStats = combine(sales, products) { salesList, productList ->
+        var rev = 0.0
+        var cogs = 0.0
+        var hoccoRev = 0.0
+        var hoccoProf = 0.0
+        var vadiRev = 0.0
+        var vadiProf = 0.0
+
+        salesList.forEach { sale ->
+            if (sale.itemsDetails.isNotBlank()) {
+                val items = sale.itemsDetails.split(";")
+                items.forEach { itemStr ->
+                    val parts = itemStr.split("|")
+                    if (parts.size >= 4) {
+                        val cat = parts[0].trim()
+                        val name = parts[1].trim()
+                        val qty = parts[2].toIntOrNull() ?: 1
+                        val price = parts[3].toDoubleOrNull() ?: 0.0
+
+                        if (cat.contains("ice", ignoreCase = true) || name.contains("ice", ignoreCase = true) || name.contains("kulfi", ignoreCase = true) || name.contains("cone", ignoreCase = true) || name.contains("dolly", ignoreCase = true) || name.contains("chocobar", ignoreCase = true)) {
+                            val lineRevenue = price * qty
+                            val matchingProd = productList.firstOrNull { it.name.equals(name, ignoreCase = true) }
+                            val unitCost = if (matchingProd != null && matchingProd.costPrice > 0) {
+                                matchingProd.costPrice
+                            } else {
+                                price * 0.65 // Default 35% margin
+                            }
+                            val lineCost = unitCost * qty
+                            val lineProfit = lineRevenue - lineCost
+
+                            rev += lineRevenue
+                            cogs += lineCost
+
+                            val brand = matchingProd?.brand?.lowercase() ?: ""
+                            if (brand.contains("hocco") || name.lowercase().contains("hocco")) {
+                                hoccoRev += lineRevenue
+                                hoccoProf += lineProfit
+                            } else if (brand.contains("vadilal") || name.lowercase().contains("vadilal")) {
+                                vadiRev += lineRevenue
+                                vadiProf += lineProfit
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        val gross = rev - cogs
+        val margin = if (rev > 0) (gross / rev) * 100.0 else 0.0
+        IceCreamProfitStats(
+            totalSalesRevenue = rev,
+            totalCostOfGoods = cogs,
+            grossProfit = gross,
+            marginPercent = margin,
+            hoccoRevenue = hoccoRev,
+            hoccoProfit = hoccoProf,
+            vadilalRevenue = vadiRev,
+            vadilalProfit = vadiProf
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), IceCreamProfitStats())
+
+    // Daily Top Soda & Ice-cream Tracker
+    val topSodaAndIceCream = sales.map { list ->
+        val sodaMap = mutableMapOf<String, Int>()
+        val iceMap = mutableMapOf<String, Int>()
+        list.forEach { sale ->
+            if (sale.itemsDetails.isNotBlank()) {
+                val items = sale.itemsDetails.split(";")
+                items.forEach { itemStr ->
+                    val parts = itemStr.split("|")
+                    if (parts.size >= 3) {
+                        val cat = parts[0].trim().lowercase()
+                        val name = parts[1].trim()
+                        val qty = parts[2].toIntOrNull() ?: 1
+                        if (cat.contains("ice") || name.lowercase().contains("ice") || name.lowercase().contains("kulfi") || name.lowercase().contains("cone") || name.lowercase().contains("dolly") || name.lowercase().contains("chocobar")) {
+                            iceMap[name] = (iceMap[name] ?: 0) + qty
+                        } else {
+                            sodaMap[name] = (sodaMap[name] ?: 0) + qty
+                        }
+                    }
+                }
+            }
+        }
+        val topSoda = sodaMap.maxByOrNull { it.value }?.let { "${it.key} (${it.value} glass)" } ?: "Limbu Soda"
+        val topIce = iceMap.maxByOrNull { it.value }?.let { "${it.key} (${it.value} pcs)" } ?: "Choco Cone"
+        Pair(topSoda, topIce)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Pair("Limbu Soda", "Choco Cone"))
 
     // NOTE: Default data seeding is intentionally removed! All categories and items are added by the user!
 
@@ -255,6 +428,7 @@ class ShopViewModel(
             )
             dao.insertSale(sale)
             firebaseSync.syncSale(sale)
+            _lastSaleForUndo.value = sale
 
             // If Udhaar sale, update or create Khata
             if (paymentMode == "UDHAR" && !customerName.isNullOrBlank()) {
@@ -286,6 +460,78 @@ class ShopViewModel(
                     details = "Deleted ₹${sale.totalAmount.toInt()} (${sale.paymentMode}) - ${sale.itemsSummary}"
                 )
             )
+        }
+    }
+
+    fun undoLastSale(onUndone: (String) -> Unit) {
+        val sale = _lastSaleForUndo.value ?: return
+        viewModelScope.launch {
+            dao.deleteSale(sale)
+            if (sale.paymentMode == "UDHAR" && !sale.customerName.isNullOrBlank()) {
+                val existing = khataList.value.find { it.name.equals(sale.customerName.trim(), ignoreCase = true) }
+                if (existing != null) {
+                    dao.recordRepayment(existing.id, sale.totalAmount)
+                }
+            }
+            _lastSaleForUndo.value = null
+            dao.insertAuditLog(
+                AuditLog(
+                    id = UUID.randomUUID().toString(),
+                    action = "SALE_UNDONE",
+                    details = "Undid Sale ₹${sale.totalAmount.toInt()} (${sale.itemsSummary})"
+                )
+            )
+            onUndone("Sale ₹${sale.totalAmount.toInt()} undone successfully")
+        }
+    }
+
+    fun addQuickExpense(category: String, title: String, amount: Double) {
+        addExpense(title, category, amount, "CASH")
+    }
+
+    fun restoreFromCloud(onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val count = firebaseSync.restoreAllFromCloud(dao)
+                dao.insertAuditLog(
+                    AuditLog(
+                        id = UUID.randomUUID().toString(),
+                        action = "CLOUD_RESTORE",
+                        details = "Restored $count records from Firebase Cloud"
+                    )
+                )
+                onResult(true, "Cloud restore successful! $count items restored.")
+            } catch (e: Exception) {
+                onResult(false, e.localizedMessage ?: "Cloud restore failed")
+            }
+        }
+    }
+
+    fun backupToCloud(onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val prods = products.value
+                prods.forEach { firebaseSync.syncProduct(it) }
+                val sls = sales.value
+                sls.take(50).forEach { firebaseSync.syncSale(it) }
+                val kht = khataList.value
+                kht.forEach { firebaseSync.syncKhata(it) }
+                val exp = expenses.value
+                exp.take(50).forEach { firebaseSync.syncExpense(it) }
+                val pur = supplierPurchases.value
+                pur.forEach { firebaseSync.syncPurchase(it) }
+
+                dao.insertAuditLog(
+                    AuditLog(
+                        id = UUID.randomUUID().toString(),
+                        action = "CLOUD_BACKUP",
+                        details = "Backed up shop data to Firebase Cloud"
+                    )
+                )
+                onResult(true, "All shop data backed up to cloud successfully!")
+            } catch (e: Exception) {
+                onResult(false, e.localizedMessage ?: "Cloud backup failed")
+            }
         }
     }
 
@@ -502,6 +748,267 @@ $stockWarningText
 ━━━━━━━━━━━━━━━━━━━━
 _Report generated by Refresh Soda App_
         """.trimIndent()
+    }
+
+    // ---------------- AUTHENTICATION & MULTI-USER ACTIONS ----------------
+    fun login(identifier: String, pass: String, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            if (identifier.isBlank() || pass.isBlank()) {
+                onResult(false, getString("err_fill_all"))
+                return@launch
+            }
+            val user = dao.getUserByEmailOrPhone(identifier.trim())
+            if (user == null) {
+                onResult(false, getString("err_user_not_found"))
+                return@launch
+            }
+            if (!SecurityUtils.verifyPassword(pass, user.password)) {
+                onResult(false, getString("err_wrong_password"))
+                return@launch
+            }
+            // Auto upgrade legacy plain password to secure SHA-256 hash
+            if (user.password == pass) {
+                dao.insertUser(user.copy(password = SecurityUtils.hashPassword(pass)))
+            }
+            dao.updateLastLogin(user.id, System.currentTimeMillis())
+            _currentUser.value = user
+            dao.insertAuditLog(
+                AuditLog(
+                    id = UUID.randomUUID().toString(),
+                    action = "USER_LOGIN",
+                    details = "User logged in: ${user.name} (${user.role})"
+                )
+            )
+            onResult(true, null)
+        }
+    }
+
+    fun quickLogin(user: UserAccount) {
+        viewModelScope.launch {
+            dao.updateLastLogin(user.id, System.currentTimeMillis())
+            _currentUser.value = user
+            dao.insertAuditLog(
+                AuditLog(
+                    id = UUID.randomUUID().toString(),
+                    action = "USER_LOGIN",
+                    details = "Quick login: ${user.name} (${user.role})"
+                )
+            )
+        }
+    }
+
+    fun register(
+        name: String,
+        identifier: String,
+        pass: String,
+        role: String,
+        shopName: String,
+        phone: String = "",
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            if (name.isBlank() || identifier.isBlank() || pass.isBlank()) {
+                onResult(false, getString("err_fill_all"))
+                return@launch
+            }
+            val existing = dao.getUserByEmailOrPhone(identifier.trim())
+            if (existing != null) {
+                onResult(false, getString("err_user_exists"))
+                return@launch
+            }
+            val newUser = UserAccount(
+                id = UUID.randomUUID().toString(),
+                name = name.trim(),
+                emailOrPhone = identifier.trim(),
+                password = SecurityUtils.hashPassword(pass),
+                role = role,
+                shopName = shopName.ifBlank { "Refresh Soda & Ice-cream" },
+                phone = phone.ifBlank { identifier.trim() }
+            )
+            dao.insertUser(newUser)
+            _currentUser.value = newUser
+
+            if (role == "OWNER") {
+                dao.insertOrUpdateProfile(
+                    UserProfile(
+                        shopName = newUser.shopName,
+                        ownerName = newUser.name,
+                        phone = newUser.phone
+                    )
+                )
+            }
+
+            firebaseSync.syncUserToCloud(newUser)
+
+            dao.insertAuditLog(
+                AuditLog(
+                    id = UUID.randomUUID().toString(),
+                    action = "USER_REGISTER",
+                    details = "Registered new user: ${newUser.name} (${newUser.role})"
+                )
+            )
+            onResult(true, null)
+        }
+    }
+
+    fun logout() {
+        viewModelScope.launch {
+            val user = _currentUser.value
+            if (user != null) {
+                dao.insertAuditLog(
+                    AuditLog(
+                        id = UUID.randomUUID().toString(),
+                        action = "USER_LOGOUT",
+                        details = "User logged out: ${user.name}"
+                    )
+                )
+            }
+            _currentUser.value = null
+        }
+    }
+
+    fun deleteUserAccount(user: UserAccount) {
+        viewModelScope.launch {
+            dao.deleteUser(user)
+            dao.insertAuditLog(
+                AuditLog(
+                    id = UUID.randomUUID().toString(),
+                    action = "USER_DELETED",
+                    details = "Deleted staff user: ${user.name}"
+                )
+            )
+            if (_currentUser.value?.id == user.id) {
+                _currentUser.value = null
+            }
+        }
+    }
+
+    // ---------------- INWARD STOCK & DISTRIBUTOR BILLS ----------------
+    fun getBrandTemplateItems(brand: String, category: String): List<InwardBillItemDraft> {
+        return when (brand.lowercase().trim()) {
+            "hocco" -> listOf(
+                InwardBillItemDraft("Hocco Belgian Chocolate", 5, costPrice = 450.0, sellingPrice = 720.0),
+                InwardBillItemDraft("Hocco Mango Dolly", 4, costPrice = 300.0, sellingPrice = 480.0),
+                InwardBillItemDraft("Hocco Matka Kulfi Cup", 6, costPrice = 550.0, sellingPrice = 900.0),
+                InwardBillItemDraft("Hocco Butterscotch Cone", 5, costPrice = 500.0, sellingPrice = 840.0),
+                InwardBillItemDraft("Hocco Rajbhog Cup", 4, costPrice = 420.0, sellingPrice = 720.0)
+            )
+            "vadilal" -> listOf(
+                InwardBillItemDraft("Vadilal Chocobar", 8, costPrice = 420.0, sellingPrice = 720.0),
+                InwardBillItemDraft("Vadilal Mango Dolly", 5, costPrice = 280.0, sellingPrice = 480.0),
+                InwardBillItemDraft("Vadilal Cassata", 3, costPrice = 650.0, sellingPrice = 1100.0),
+                InwardBillItemDraft("Vadilal Pista Kulfi", 6, costPrice = 320.0, sellingPrice = 600.0)
+            )
+            "hajoori" -> listOf(
+                InwardBillItemDraft("Hajoori Jeera Soda Box (24 Btl)", 10, costPrice = 220.0, sellingPrice = 360.0),
+                InwardBillItemDraft("Hajoori Lemon Soda Box (24 Btl)", 8, costPrice = 220.0, sellingPrice = 360.0)
+            )
+            else -> listOf(
+                InwardBillItemDraft("$brand Box A", 5, costPrice = 350.0, sellingPrice = 500.0),
+                InwardBillItemDraft("$brand Box B", 3, costPrice = 400.0, sellingPrice = 600.0)
+            )
+        }
+    }
+
+    fun parseInwardBillText(brand: String, rawText: String): List<InwardBillItemDraft> {
+        val lines = rawText.lines().map { it.trim() }.filter { it.isNotBlank() }
+        val drafts = mutableListOf<InwardBillItemDraft>()
+        lines.forEach { line ->
+            val parts = if (line.contains(",")) line.split(",") else line.split(Regex("\\s+"))
+            if (parts.size >= 2) {
+                val name = parts[0].trim()
+                val boxes = parts.getOrNull(1)?.toIntOrNull() ?: 1
+                val cost = parts.getOrNull(2)?.toDoubleOrNull() ?: 350.0
+                val sell = parts.getOrNull(3)?.toDoubleOrNull() ?: (cost * 1.4)
+                drafts.add(InwardBillItemDraft(name, boxes, cost, sell))
+            }
+        }
+        return if (drafts.isNotEmpty()) drafts else getBrandTemplateItems(brand, "Ice-cream")
+    }
+
+    fun saveInwardStockPurchase(
+        brand: String,
+        category: String,
+        billNumber: String,
+        billDate: String,
+        totalAmount: Double,
+        paidAmount: Double,
+        paymentStatus: String,
+        paymentMode: String,
+        draftItems: List<InwardBillItemDraft>,
+        onComplete: () -> Unit
+    ) {
+        viewModelScope.launch {
+            val totalBoxes = draftItems.sumOf { it.boxes }
+            val itemsSummary = draftItems.joinToString(", ") { "${it.name} (${it.boxes} Box)" }
+            val purchase = SupplierPurchase(
+                id = UUID.randomUUID().toString(),
+                brand = brand.trim(),
+                category = category.trim(),
+                billNumber = billNumber.trim().ifBlank { "INV-${(System.currentTimeMillis() % 10000)}" },
+                billDate = billDate.trim().ifBlank { todayDateString },
+                totalAmount = totalAmount,
+                paidAmount = paidAmount,
+                paymentStatus = paymentStatus,
+                paymentMode = paymentMode,
+                totalBoxes = totalBoxes,
+                itemsSummary = itemsSummary
+            )
+            dao.insertSupplierPurchase(purchase)
+
+            val existingProducts = dao.getAllProducts().first()
+            draftItems.forEach { draft ->
+                val existing = existingProducts.firstOrNull {
+                    it.name.equals(draft.name.trim(), ignoreCase = true) &&
+                    it.brand.equals(brand.trim(), ignoreCase = true)
+                }
+                if (existing != null) {
+                    dao.insertProduct(
+                        existing.copy(
+                            sealedBoxes = existing.sealedBoxes + draft.boxes,
+                            costPrice = draft.costPrice,
+                            price = if (draft.sellingPrice > 0) draft.sellingPrice else existing.price
+                        )
+                    )
+                } else {
+                    dao.insertProduct(
+                        Product(
+                            id = UUID.randomUUID().toString(),
+                            name = draft.name.trim(),
+                            category = category.trim(),
+                            brand = brand.trim(),
+                            price = draft.sellingPrice,
+                            costPrice = draft.costPrice,
+                            sealedBoxes = draft.boxes
+                        )
+                    )
+                }
+            }
+
+            dao.insertAuditLog(
+                AuditLog(
+                    id = UUID.randomUUID().toString(),
+                    action = "STOCK_INWARD_BILL",
+                    details = "Inward $brand ($category): $totalBoxes Boxes, Bill ₹${totalAmount.toInt()} [$paymentStatus, Paid: ₹${paidAmount.toInt()}]"
+                )
+            )
+
+            firebaseSync.syncPurchase(purchase)
+            onComplete()
+        }
+    }
+
+    fun markSupplierBillPaid(purchase: SupplierPurchase) {
+        viewModelScope.launch {
+            dao.markPurchaseFullPaid(purchase.id)
+            dao.insertAuditLog(
+                AuditLog(
+                    id = UUID.randomUUID().toString(),
+                    action = "SUPPLIER_BILL_PAID",
+                    details = "Paid balance for ${purchase.brand} Bill #${purchase.billNumber}"
+                )
+            )
+        }
     }
 }
 

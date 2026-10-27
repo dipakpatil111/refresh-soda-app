@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Soda Glass Body -->
+    <path
+        android:fillColor="#E0F2FE"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:pathData="M34,42 L40,82 C40.5,85 43,87 46,87 L62,87 C65,87 67.5,85 68,82 L74,42 Z" />
+
+    <!-- Soda Liquid fill inside cup -->
+    <path
+        android:fillColor="#0284C7"
+        android:pathData="M37,49 L41,80 C41.5,82.5 43.5,84 46,84 L62,84 C64.5,84 66.5,82.5 67,80 L71,49 Q54,54 37,49 Z" />
+
+    <!-- Lime / Lemon Slice on rim -->
+    <path
+        android:fillColor="#FACC15"
+        android:pathData="M34,34 A10,10 0 0,0 24,44 A10,10 0 0,0 34,54 Z" />
+    <path
+        android:fillColor="#FEF08A"
+        android:pathData="M34,37 A7,7 0 0,0 27,44 A7,7 0 0,0 34,51 Z" />
+
+    <!-- Ice Cream Scoop on Top Right -->
+    <path
+        android:fillColor="#F472B6"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:pathData="M54,42 C50,42 48,36 52,32 C55,27 65,26 70,32 C74,36 72,42 68,42 Z" />
+
+    <!-- Cherry on top -->
+    <path
+        android:fillColor="#DC2626"
+        android:pathData="M60,27 A3.5,3.5 0 1,0 67,27 A3.5,3.5 0 1,0 60,27 Z" />
+
+    <!-- Straw -->
+    <path
+        android:strokeColor="#F87171"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:pathData="M64,52 L76,22 L84,18" />
+
+    <!-- Fizzy Soda Bubbles -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M48,60 A2,2 0 1,0 52,60 A2,2 0 1,0 48,60 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M56,70 A2.5,2.5 0 1,0 61,70 A2.5,2.5 0 1,0 56,70 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M45,74 A1.5,1.5 0 1,0 48,74 A1.5,1.5 0 1,0 45,74 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M58,54 A1.8,1.8 0 1,0 61.6,54 A1.8,1.8 0 1,0 58,54 Z" />
+</vector>
+

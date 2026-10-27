@@ -7,6 +7,7 @@ coroutines = "1.8.0"
 firebaseBom = "33.7.0"
 lifecycle = "2.8.7"
 activityCompose = "1.9.3"
+mlkit = "19.0.1"
 
 [libraries]
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
@@ -28,6 +29,7 @@ kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "ko
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-firestore-ktx = { group = "com.google.firebase", name = "firebase-firestore-ktx" }
 firebase-auth-ktx = { group = "com.google.firebase", name = "firebase-auth-ktx" }
+mlkit-text-recognition = { group = "com.google.android.gms", name = "play-services-mlkit-text-recognition", version.ref = "mlkit" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

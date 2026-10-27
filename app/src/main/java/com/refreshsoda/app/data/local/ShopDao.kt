@@ -7,12 +7,22 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface ShopDao {
 
+    // User Profile
+    @Query("SELECT * FROM user_profile WHERE id = 'shop_profile' LIMIT 1")
+    fun getUserProfile(): Flow<UserProfile?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdateProfile(profile: UserProfile)
+
     // User-Defined Categories
     @Query("SELECT * FROM categories ORDER BY orderIndex, name ASC")
     fun getAllCategories(): Flow<List<ProductCategory>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCategory(category: ProductCategory)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCategories(categories: List<ProductCategory>)
 
     @Delete
     suspend fun deleteCategory(category: ProductCategory)
@@ -26,6 +36,9 @@ interface ShopDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertProduct(product: Product)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertProducts(products: List<Product>)
 
     @Delete
     suspend fun deleteProduct(product: Product)
@@ -96,4 +109,36 @@ interface ShopDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAuditLog(log: AuditLog)
+
+    // User Accounts (Multi-User & Staff)
+    @Query("SELECT * FROM user_accounts ORDER BY createdAt ASC")
+    fun getAllUsers(): Flow<List<UserAccount>>
+
+    @Query("SELECT * FROM user_accounts WHERE LOWER(emailOrPhone) = LOWER(:identifier) LIMIT 1")
+    suspend fun getUserByEmailOrPhone(identifier: String): UserAccount?
+
+    @Query("SELECT * FROM user_accounts WHERE id = :id LIMIT 1")
+    suspend fun getUserById(id: String): UserAccount?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertUser(user: UserAccount)
+
+    @Delete
+    suspend fun deleteUser(user: UserAccount)
+
+    @Query("UPDATE user_accounts SET lastLoginAt = :timestamp WHERE id = :userId")
+    suspend fun updateLastLogin(userId: String, timestamp: Long)
+
+    // Supplier Purchases & Distributor Bills
+    @Query("SELECT * FROM supplier_purchases ORDER BY timestamp DESC")
+    fun getAllSupplierPurchases(): Flow<List<SupplierPurchase>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSupplierPurchase(purchase: SupplierPurchase)
+
+    @Delete
+    suspend fun deleteSupplierPurchase(purchase: SupplierPurchase)
+
+    @Query("UPDATE supplier_purchases SET paymentStatus = :status, paidAmount = totalAmount WHERE id = :id")
+    suspend fun markPurchaseFullPaid(id: String, status: String = "PAID")
 }

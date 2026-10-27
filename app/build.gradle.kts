@@ -69,4 +69,7 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.firestore.ktx)
     implementation(libs.firebase.auth.ktx)
+
+    // ML Kit Text Recognition for Bill Scanning
+    implementation(libs.mlkit.text.recognition)
 }
