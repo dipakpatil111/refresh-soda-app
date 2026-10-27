@@ -94,7 +94,7 @@ class MainActivity : ComponentActivity() {
                                         val nextMode = when (themeMode) {
                                             AppThemeMode.LIGHT -> AppThemeMode.DARK
                                             AppThemeMode.DARK -> AppThemeMode.SYSTEM
-                                            AppThemeMode.SYSTEM -> AppThemeMode.LIGHT
+                                            else -> AppThemeMode.LIGHT
                                         }
                                         viewModel.setThemeMode(nextMode)
                                     }) {
@@ -102,7 +102,7 @@ class MainActivity : ComponentActivity() {
                                             imageVector = when (themeMode) {
                                                 AppThemeMode.LIGHT -> Icons.Default.LightMode
                                                 AppThemeMode.DARK -> Icons.Default.DarkMode
-                                                AppThemeMode.SYSTEM -> Icons.Default.BrightnessAuto
+                                                else -> Icons.Default.BrightnessAuto
                                             },
                                             contentDescription = "Theme Toggle"
                                         )

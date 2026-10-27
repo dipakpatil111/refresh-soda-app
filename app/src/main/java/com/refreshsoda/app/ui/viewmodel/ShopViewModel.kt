@@ -9,6 +9,7 @@ import com.refreshsoda.app.data.model.*
 import com.refreshsoda.app.data.security.SecurityUtils
 import com.refreshsoda.app.ui.i18n.AppLanguage
 import com.refreshsoda.app.ui.i18n.AppStrings
+import com.refreshsoda.app.ui.theme.AppThemeMode
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -59,6 +60,35 @@ class ShopViewModel(
 
     fun getString(key: String): String {
         return AppStrings.get(key, _language.value)
+    }
+
+    // Theme Mode
+    private val _themeMode = MutableStateFlow(AppThemeMode.SYSTEM)
+    val themeMode = _themeMode.asStateFlow()
+
+    fun setThemeMode(mode: AppThemeMode) {
+        _themeMode.value = mode
+    }
+
+    // User / Shop Profile
+    val userProfile = dao.getUserProfile().map { it ?: UserProfile() }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        UserProfile()
+    )
+
+    fun saveUserProfile(shopName: String, ownerName: String, phone: String, upiId: String, address: String) {
+        viewModelScope.launch {
+            val profile = UserProfile(
+                id = "shop_profile",
+                shopName = shopName.trim(),
+                ownerName = ownerName.trim(),
+                phone = phone.trim(),
+                upiId = upiId.trim(),
+                address = address.trim()
+            )
+            dao.insertOrUpdateProfile(profile)
+        }
     }
 
     // Database flows
@@ -173,6 +203,20 @@ class ShopViewModel(
                     }
                 }
             }
+        }
+        map
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    val totalExpensesAmount = expenses.map { list -> list.sumOf { it.amount } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
+    val todayNetProfit = combine(totalSalesAmount, totalExpensesAmount) { sales, exp ->
+        sales - exp
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
+    val categoryExpenses = expenses.map { list ->
+        val map = mutableMapOf<String, Double>()
+        list.forEach { exp ->
+            map[exp.category] = (map[exp.category] ?: 0.0) + exp.amount
         }
         map
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
@@ -342,6 +386,73 @@ class ShopViewModel(
     fun deleteCategory(category: ProductCategory) {
         viewModelScope.launch {
             dao.deleteCategory(category)
+        }
+    }
+
+    fun parseTextToDraftItems(text: String): List<DraftProductItem> {
+        val result = mutableListOf<DraftProductItem>()
+        var currentCategory = "Soda"
+
+        text.lines().forEach { rawLine ->
+            val line = rawLine.trim()
+            if (line.isBlank() || line.startsWith("#") || line.startsWith("//")) return@forEach
+
+            if (line.startsWith("[") && line.endsWith("]")) {
+                currentCategory = line.removeSurrounding("[", "]").trim()
+                return@forEach
+            }
+
+            val parts = if (line.contains(",")) line.split(",") else if (line.contains("|")) line.split("|") else line.split("\t")
+            if (parts.isNotEmpty()) {
+                val name = parts[0].trim()
+                if (name.length > 1) {
+                    val price = parts.getOrNull(1)?.trim()?.replace(Regex("[^0-9.]"), "")?.toDoubleOrNull() ?: 20.0
+                    val brand = parts.getOrNull(2)?.trim() ?: ""
+                    val boxes = parts.getOrNull(3)?.trim()?.replace(Regex("[^0-9]"), "")?.toIntOrNull() ?: 0
+                    val cost = price * 0.70
+
+                    result.add(
+                        DraftProductItem(
+                            category = currentCategory,
+                            name = name,
+                            brand = brand,
+                            price = price,
+                            costPrice = cost,
+                            sealedBoxes = boxes
+                        )
+                    )
+                }
+            }
+        }
+        return result
+    }
+
+    fun bulkImportCategoriesAndProducts(items: List<DraftProductItem>) {
+        viewModelScope.launch {
+            val distinctCategories = items.map { it.category.trim() }.distinct().filter { it.isNotBlank() }
+            distinctCategories.forEach { catName ->
+                addCategory(catName)
+            }
+            items.forEach { draft ->
+                val prod = Product(
+                    id = UUID.randomUUID().toString(),
+                    name = draft.name.trim(),
+                    category = draft.category.trim(),
+                    brand = draft.brand.trim(),
+                    price = draft.price,
+                    costPrice = draft.costPrice,
+                    sealedBoxes = draft.sealedBoxes
+                )
+                dao.insertProduct(prod)
+                firebaseSync.syncProduct(prod)
+            }
+            dao.insertAuditLog(
+                AuditLog(
+                    id = UUID.randomUUID().toString(),
+                    action = "BULK_IMPORT",
+                    details = "Imported ${items.size} items across ${distinctCategories.size} categories"
+                )
+            )
         }
     }
 
@@ -748,6 +859,35 @@ $stockWarningText
 ━━━━━━━━━━━━━━━━━━━━
 _Report generated by Refresh Soda App_
         """.trimIndent()
+    }
+
+    fun generateBillReceiptText(sale: SaleTransaction): String {
+        val shop = userProfile.value.shopName.ifBlank { "Refresh Soda & Ice-cream" }
+        val sb = StringBuilder()
+        sb.appendLine("🧾 *${shop.uppercase()}*")
+        sb.appendLine("📅 Date: ${sale.date}")
+        sb.appendLine("━━━━━━━━━━━━━━━━━━━━")
+        if (sale.itemsDetails.isNotBlank()) {
+            sale.itemsDetails.split(";").forEach { itemStr ->
+                val parts = itemStr.split("|")
+                if (parts.size >= 4) {
+                    val name = parts[1]
+                    val qty = parts[2]
+                    val price = parts[3]
+                    sb.appendLine("• $name x$qty = ₹${(qty.toIntOrNull() ?: 1) * (price.toDoubleOrNull() ?: 0.0)}")
+                }
+            }
+        } else {
+            sb.appendLine("• Items: ${sale.itemsSummary}")
+        }
+        sb.appendLine("━━━━━━━━━━━━━━━━━━━━")
+        sb.appendLine("💰 *Total: ₹${sale.totalAmount.toInt()}*")
+        sb.appendLine("💳 Payment: ${sale.paymentMode}")
+        if (!sale.customerName.isNullOrBlank()) {
+            sb.appendLine("👤 Customer: ${sale.customerName}")
+        }
+        sb.appendLine("🙏 Thank you! Visit Again!")
+        return sb.toString()
     }
 
     // ---------------- AUTHENTICATION & MULTI-USER ACTIONS ----------------

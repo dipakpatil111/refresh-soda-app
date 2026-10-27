@@ -2674,7 +2674,7 @@ fun InventoryScreen(viewModel: ShopViewModel) {
 
     if (showAddStockDialog && products.isNotEmpty()) {
         var selectedProduct by remember { mutableStateOf(products.first()) }
-        var countText by remember { mutableStateOf("5") }
+        var boxCountText by remember { mutableStateOf("5") }
 
         AlertDialog(
             onDismissRequest = { showAddStockDialog = false },
