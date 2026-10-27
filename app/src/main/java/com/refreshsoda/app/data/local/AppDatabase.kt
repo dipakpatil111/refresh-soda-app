@@ -7,8 +7,18 @@ import androidx.room.RoomDatabase
 import com.refreshsoda.app.data.model.*
 
 @Database(
-    entities = [Product::class, SaleTransaction::class, CustomerKhata::class, Expense::class],
-    version = 1,
+    entities = [
+        ProductCategory::class,
+        Product::class,
+        SaleTransaction::class,
+        CustomerKhata::class,
+        KhataRepayment::class,
+        Expense::class,
+        DayClosing::class,
+        PaytmSettlement::class,
+        AuditLog::class
+    ],
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

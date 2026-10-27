@@ -30,4 +30,28 @@ class FirebaseSyncService {
             e.printStackTrace()
         }
     }
+
+    suspend fun syncExpense(expense: Expense) {
+        try {
+            firestore.collection("expenses").document(expense.id).set(expense).await()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    suspend fun syncClosing(closing: DayClosing) {
+        try {
+            firestore.collection("closings").document(closing.date).set(closing).await()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    suspend fun syncSettlement(settlement: PaytmSettlement) {
+        try {
+            firestore.collection("settlements").document(settlement.date).set(settlement).await()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 }
