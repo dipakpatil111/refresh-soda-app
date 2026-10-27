@@ -44,7 +44,7 @@ fun AuthScreen(
     var regPassword by remember { mutableStateOf("") }
     var regConfirmPassword by remember { mutableStateOf("") }
     var regRole by remember { mutableStateOf("OWNER") } // OWNER or STAFF
-    var regShopName by remember { mutableStateOf("Refresh Soda & Ice-cream") }
+    var regShopName by remember { mutableStateOf("") }
     var showRegPassword by remember { mutableStateOf(false) }
 
     Surface(
@@ -101,7 +101,7 @@ fun AuthScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                text = regShopName,
+                text = regShopName.ifBlank { "Refresh Soda & Ice-cream" },
                 fontSize = 22.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = MaterialTheme.colorScheme.onBackground,
@@ -431,4 +431,3 @@ fun AuthScreen(
         }
     }
 }
-

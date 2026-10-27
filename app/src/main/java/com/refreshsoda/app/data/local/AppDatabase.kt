@@ -10,6 +10,7 @@ import com.refreshsoda.app.data.model.*
 
 @Database(
     entities = [
+        ShopBrand::class,
         UserProfile::class,
         ProductCategory::class,
         Product::class,
@@ -23,7 +24,7 @@ import com.refreshsoda.app.data.model.*
         UserAccount::class,
         SupplierPurchase::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -41,9 +42,7 @@ abstract class AppDatabase : RoomDatabase() {
 
         val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                try {
-                    db.execSQL("ALTER TABLE `sales` ADD COLUMN `itemsDetails` TEXT NOT NULL DEFAULT ''")
-                } catch (_: Exception) {}
+                db.execSQL("ALTER TABLE `sales` ADD COLUMN `itemsDetails` TEXT NOT NULL DEFAULT ''")
             }
         }
 
@@ -55,7 +54,8 @@ abstract class AppDatabase : RoomDatabase() {
 
         val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("""
+                db.execSQL(
+                    """
                     CREATE TABLE IF NOT EXISTS `user_accounts` (
                         `id` TEXT NOT NULL PRIMARY KEY,
                         `name` TEXT NOT NULL,
@@ -67,17 +67,16 @@ abstract class AppDatabase : RoomDatabase() {
                         `createdAt` INTEGER NOT NULL,
                         `lastLoginAt` INTEGER NOT NULL
                     )
-                """.trimIndent())
+                    """.trimIndent()
+                )
             }
         }
 
         val MIGRATION_5_6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                try {
-                    db.execSQL("ALTER TABLE `products` ADD COLUMN `costPrice` REAL NOT NULL DEFAULT 0.0")
-                } catch (_: Exception) {}
-
-                db.execSQL("""
+                db.execSQL("ALTER TABLE `products` ADD COLUMN `costPrice` REAL NOT NULL DEFAULT 0.0")
+                db.execSQL(
+                    """
                     CREATE TABLE IF NOT EXISTS `supplier_purchases` (
                         `id` TEXT NOT NULL PRIMARY KEY,
                         `brand` TEXT NOT NULL,
@@ -93,7 +92,8 @@ abstract class AppDatabase : RoomDatabase() {
                         `billImageUri` TEXT,
                         `timestamp` INTEGER NOT NULL
                     )
-                """.trimIndent())
+                    """.trimIndent()
+                )
             }
         }
 
@@ -101,6 +101,12 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 MIGRATION_4_5.migrate(db)
                 MIGRATION_5_6.migrate(db)
+            }
+        }
+
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `brands` (`id` TEXT NOT NULL PRIMARY KEY, `name` TEXT NOT NULL)")
             }
         }
 
@@ -117,7 +123,8 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_3_4,
                     MIGRATION_4_5,
                     MIGRATION_5_6,
-                    MIGRATION_4_6
+                    MIGRATION_4_6,
+                    MIGRATION_6_7
                 )
                 .fallbackToDestructiveMigrationOnDowngrade()
                 .build()

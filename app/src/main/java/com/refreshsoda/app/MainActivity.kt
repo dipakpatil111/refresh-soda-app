@@ -70,7 +70,9 @@ class MainActivity : ComponentActivity() {
                                 title = {
                                     Column {
                                         Text(
-                                            userProfile.shopName.ifBlank { currentUser?.shopName ?: "Refresh Soda & Ice-cream" },
+                                            userProfile.shopName.ifBlank {
+                                                currentUser?.shopName?.takeIf { it.isNotBlank() } ?: "Refresh Soda & Ice-cream"
+                                            },
                                             fontSize = 17.sp,
                                             fontWeight = FontWeight.Bold,
                                             maxLines = 1

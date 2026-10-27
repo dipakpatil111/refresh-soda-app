@@ -35,11 +35,7 @@ data class IceCreamProfitStats(
     val totalSalesRevenue: Double = 0.0,
     val totalCostOfGoods: Double = 0.0,
     val grossProfit: Double = 0.0,
-    val marginPercent: Double = 0.0,
-    val hoccoRevenue: Double = 0.0,
-    val hoccoProfit: Double = 0.0,
-    val vadilalRevenue: Double = 0.0,
-    val vadilalProfit: Double = 0.0
+    val marginPercent: Double = 0.0
 )
 
 class ShopViewModel(
@@ -93,6 +89,7 @@ class ShopViewModel(
 
     // Database flows
     val categories = dao.getAllCategories().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val brands = dao.getAllBrands().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val products = dao.getAllProducts().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val sales = dao.getAllSales().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val khataList = dao.getAllKhata().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -107,35 +104,6 @@ class ShopViewModel(
     private val _currentUser = MutableStateFlow<UserAccount?>(null)
     val currentUser = _currentUser.asStateFlow()
 
-    init {
-        viewModelScope.launch {
-            dao.getAllUsers().first().let { userList ->
-                if (userList.isEmpty()) {
-                    val defaultOwner = UserAccount(
-                        id = "user_owner",
-                        name = "Dipak Patil",
-                        emailOrPhone = "dipak@gmail.com",
-                        password = "123",
-                        role = "OWNER",
-                        shopName = "Refresh Soda & Ice-cream",
-                        phone = "9876543210"
-                    )
-                    val defaultStaff = UserAccount(
-                        id = "user_staff",
-                        name = "Ramesh (Counter)",
-                        emailOrPhone = "staff",
-                        password = "123",
-                        role = "STAFF",
-                        shopName = "Refresh Soda & Ice-cream",
-                        phone = "9123456780"
-                    )
-                    dao.insertUser(defaultOwner)
-                    dao.insertUser(defaultStaff)
-                }
-            }
-        }
-    }
-
     // POS Cart State
     private val _cart = MutableStateFlow<List<CartItem>>(emptyList())
     val cart = _cart.asStateFlow()
@@ -143,7 +111,7 @@ class ShopViewModel(
     private val _discount = MutableStateFlow(0.0)
     val discount = _discount.asStateFlow()
 
-    private val _openingCash = MutableStateFlow(500.0) // Default morning cash
+    private val _openingCash = MutableStateFlow(0.0)
     val openingCash = _openingCash.asStateFlow()
 
     // Sale Undo State (Holds last sale for 5-second undo snackbar)
@@ -258,7 +226,7 @@ class ShopViewModel(
     // Expected Cash = Opening Cash + Cash Sales + Cash Udhar Recovery - Cash Expenses
     val expectedCash = combine(openingCash, cashSalesAmount, udharCashRepaymentTotal, cashExpensesTotal) { opening, cashSale, recovery, expense ->
         opening + cashSale + recovery - expense
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 500.0)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
     // UPI Total Collection for Paytm Settlement (UPI Sales + UPI Udhar Repayments)
     val totalUpiCollection = combine(upiSalesAmount, repayments) { upiSale, repayList ->
@@ -276,15 +244,10 @@ class ShopViewModel(
     val iceCreamProfitStats = combine(sales, products) { salesList, productList ->
         var rev = 0.0
         var cogs = 0.0
-        var hoccoRev = 0.0
-        var hoccoProf = 0.0
-        var vadiRev = 0.0
-        var vadiProf = 0.0
-
         salesList.forEach { sale ->
             if (sale.itemsDetails.isNotBlank()) {
                 val items = sale.itemsDetails.split(";")
-                items.forEach { itemStr ->
+                items.forEach itemLoop@ { itemStr ->
                     val parts = itemStr.split("|")
                     if (parts.size >= 4) {
                         val cat = parts[0].trim()
@@ -292,28 +255,14 @@ class ShopViewModel(
                         val qty = parts[2].toIntOrNull() ?: 1
                         val price = parts[3].toDoubleOrNull() ?: 0.0
 
-                        if (cat.contains("ice", ignoreCase = true) || name.contains("ice", ignoreCase = true) || name.contains("kulfi", ignoreCase = true) || name.contains("cone", ignoreCase = true) || name.contains("dolly", ignoreCase = true) || name.contains("chocobar", ignoreCase = true)) {
+                        if (cat.isIceCreamCategory()) {
                             val lineRevenue = price * qty
                             val matchingProd = productList.firstOrNull { it.name.equals(name, ignoreCase = true) }
-                            val unitCost = if (matchingProd != null && matchingProd.costPrice > 0) {
-                                matchingProd.costPrice
-                            } else {
-                                price * 0.65 // Default 35% margin
-                            }
+                            val unitCost = matchingProd?.costPrice?.takeIf { it > 0 } ?: return@itemLoop
                             val lineCost = unitCost * qty
-                            val lineProfit = lineRevenue - lineCost
 
                             rev += lineRevenue
                             cogs += lineCost
-
-                            val brand = matchingProd?.brand?.lowercase() ?: ""
-                            if (brand.contains("hocco") || name.lowercase().contains("hocco")) {
-                                hoccoRev += lineRevenue
-                                hoccoProf += lineProfit
-                            } else if (brand.contains("vadilal") || name.lowercase().contains("vadilal")) {
-                                vadiRev += lineRevenue
-                                vadiProf += lineProfit
-                            }
                         }
                     }
                 }
@@ -325,11 +274,7 @@ class ShopViewModel(
             totalSalesRevenue = rev,
             totalCostOfGoods = cogs,
             grossProfit = gross,
-            marginPercent = margin,
-            hoccoRevenue = hoccoRev,
-            hoccoProfit = hoccoProf,
-            vadilalRevenue = vadiRev,
-            vadilalProfit = vadiProf
+            marginPercent = margin
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), IceCreamProfitStats())
 
@@ -346,19 +291,19 @@ class ShopViewModel(
                         val cat = parts[0].trim().lowercase()
                         val name = parts[1].trim()
                         val qty = parts[2].toIntOrNull() ?: 1
-                        if (cat.contains("ice") || name.lowercase().contains("ice") || name.lowercase().contains("kulfi") || name.lowercase().contains("cone") || name.lowercase().contains("dolly") || name.lowercase().contains("chocobar")) {
+                        if (cat.isIceCreamCategory()) {
                             iceMap[name] = (iceMap[name] ?: 0) + qty
-                        } else {
+                        } else if (cat.contains("soda", ignoreCase = true)) {
                             sodaMap[name] = (sodaMap[name] ?: 0) + qty
                         }
                     }
                 }
             }
         }
-        val topSoda = sodaMap.maxByOrNull { it.value }?.let { "${it.key} (${it.value} glass)" } ?: "Limbu Soda"
-        val topIce = iceMap.maxByOrNull { it.value }?.let { "${it.key} (${it.value} pcs)" } ?: "Choco Cone"
+        val topSoda = sodaMap.maxByOrNull { it.value }?.let { "${it.key} (${it.value} glass)" } ?: "—"
+        val topIce = iceMap.maxByOrNull { it.value }?.let { "${it.key} (${it.value} pcs)" } ?: "—"
         Pair(topSoda, topIce)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Pair("Limbu Soda", "Choco Cone"))
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Pair("—", "—"))
 
     // NOTE: Default data seeding is intentionally removed! All categories and items are added by the user!
 
@@ -367,6 +312,7 @@ class ShopViewModel(
         val trimmed = name.trim()
         if (trimmed.isBlank()) return
         viewModelScope.launch {
+            if (dao.getAllCategories().first().any { it.name.equals(trimmed, ignoreCase = true) }) return@launch
             val category = ProductCategory(
                 id = UUID.randomUUID().toString(),
                 name = trimmed,
@@ -391,7 +337,7 @@ class ShopViewModel(
 
     fun parseTextToDraftItems(text: String): List<DraftProductItem> {
         val result = mutableListOf<DraftProductItem>()
-        var currentCategory = "Soda"
+        var currentCategory = ""
 
         text.lines().forEach { rawLine ->
             val line = rawLine.trim()
@@ -405,11 +351,11 @@ class ShopViewModel(
             val parts = if (line.contains(",")) line.split(",") else if (line.contains("|")) line.split("|") else line.split("\t")
             if (parts.isNotEmpty()) {
                 val name = parts[0].trim()
-                if (name.length > 1) {
-                    val price = parts.getOrNull(1)?.trim()?.replace(Regex("[^0-9.]"), "")?.toDoubleOrNull() ?: 20.0
+                val price = parts.getOrNull(1)?.trim()?.replace(Regex("[^0-9.]"), "")?.toDoubleOrNull()
+                if (name.length > 1 && currentCategory.isNotBlank() && price != null && price > 0) {
                     val brand = parts.getOrNull(2)?.trim() ?: ""
                     val boxes = parts.getOrNull(3)?.trim()?.replace(Regex("[^0-9]"), "")?.toIntOrNull() ?: 0
-                    val cost = price * 0.70
+                    val cost = parts.getOrNull(4)?.trim()?.replace(Regex("[^0-9.]"), "")?.toDoubleOrNull() ?: 0.0
 
                     result.add(
                         DraftProductItem(
@@ -430,8 +376,15 @@ class ShopViewModel(
     fun bulkImportCategoriesAndProducts(items: List<DraftProductItem>) {
         viewModelScope.launch {
             val distinctCategories = items.map { it.category.trim() }.distinct().filter { it.isNotBlank() }
-            distinctCategories.forEach { catName ->
-                addCategory(catName)
+            val existingCategoryNames = dao.getAllCategories().first().map { it.name.lowercase() }.toSet()
+            distinctCategories.filterNot { it.lowercase() in existingCategoryNames }.forEachIndexed { index, catName ->
+                dao.insertCategory(
+                    ProductCategory(
+                        id = UUID.randomUUID().toString(),
+                        name = catName,
+                        orderIndex = categories.value.size + index
+                    )
+                )
             }
             items.forEach { draft ->
                 val prod = Product(
@@ -594,10 +547,6 @@ class ShopViewModel(
             )
             onUndone("Sale ₹${sale.totalAmount.toInt()} undone successfully")
         }
-    }
-
-    fun addQuickExpense(category: String, title: String, amount: Double) {
-        addExpense(title, category, amount, "CASH")
     }
 
     fun restoreFromCloud(onResult: (Boolean, String) -> Unit) {
@@ -826,7 +775,7 @@ class ShopViewModel(
         val act = actualCash?.toInt() ?: expected
         val diff = act - expected
 
-        val lowStock = products.value.filter { it.sealedBoxes <= 2 }
+        val lowStock = products.value.filter { it.category.isIceCreamCategory() && it.sealedBoxes <= 2 }
         val stockWarningText = if (lowStock.isNotEmpty()) {
             "⚠️ *कम स्टॉक चेतावनी (<=2 Box):*\n" + lowStock.joinToString("\n") { "• ${it.name} (${it.brand}): ${it.sealedBoxes} Box" }
         } else {
@@ -963,7 +912,7 @@ _Report generated by Refresh Soda App_
                 emailOrPhone = identifier.trim(),
                 password = SecurityUtils.hashPassword(pass),
                 role = role,
-                shopName = shopName.ifBlank { "Refresh Soda & Ice-cream" },
+                shopName = shopName.trim(),
                 phone = phone.ifBlank { identifier.trim() }
             )
             dao.insertUser(newUser)
@@ -1025,48 +974,6 @@ _Report generated by Refresh Soda App_
     }
 
     // ---------------- INWARD STOCK & DISTRIBUTOR BILLS ----------------
-    fun getBrandTemplateItems(brand: String, category: String): List<InwardBillItemDraft> {
-        return when (brand.lowercase().trim()) {
-            "hocco" -> listOf(
-                InwardBillItemDraft("Hocco Belgian Chocolate", 5, costPrice = 450.0, sellingPrice = 720.0),
-                InwardBillItemDraft("Hocco Mango Dolly", 4, costPrice = 300.0, sellingPrice = 480.0),
-                InwardBillItemDraft("Hocco Matka Kulfi Cup", 6, costPrice = 550.0, sellingPrice = 900.0),
-                InwardBillItemDraft("Hocco Butterscotch Cone", 5, costPrice = 500.0, sellingPrice = 840.0),
-                InwardBillItemDraft("Hocco Rajbhog Cup", 4, costPrice = 420.0, sellingPrice = 720.0)
-            )
-            "vadilal" -> listOf(
-                InwardBillItemDraft("Vadilal Chocobar", 8, costPrice = 420.0, sellingPrice = 720.0),
-                InwardBillItemDraft("Vadilal Mango Dolly", 5, costPrice = 280.0, sellingPrice = 480.0),
-                InwardBillItemDraft("Vadilal Cassata", 3, costPrice = 650.0, sellingPrice = 1100.0),
-                InwardBillItemDraft("Vadilal Pista Kulfi", 6, costPrice = 320.0, sellingPrice = 600.0)
-            )
-            "hajoori" -> listOf(
-                InwardBillItemDraft("Hajoori Jeera Soda Box (24 Btl)", 10, costPrice = 220.0, sellingPrice = 360.0),
-                InwardBillItemDraft("Hajoori Lemon Soda Box (24 Btl)", 8, costPrice = 220.0, sellingPrice = 360.0)
-            )
-            else -> listOf(
-                InwardBillItemDraft("$brand Box A", 5, costPrice = 350.0, sellingPrice = 500.0),
-                InwardBillItemDraft("$brand Box B", 3, costPrice = 400.0, sellingPrice = 600.0)
-            )
-        }
-    }
-
-    fun parseInwardBillText(brand: String, rawText: String): List<InwardBillItemDraft> {
-        val lines = rawText.lines().map { it.trim() }.filter { it.isNotBlank() }
-        val drafts = mutableListOf<InwardBillItemDraft>()
-        lines.forEach { line ->
-            val parts = if (line.contains(",")) line.split(",") else line.split(Regex("\\s+"))
-            if (parts.size >= 2) {
-                val name = parts[0].trim()
-                val boxes = parts.getOrNull(1)?.toIntOrNull() ?: 1
-                val cost = parts.getOrNull(2)?.toDoubleOrNull() ?: 350.0
-                val sell = parts.getOrNull(3)?.toDoubleOrNull() ?: (cost * 1.4)
-                drafts.add(InwardBillItemDraft(name, boxes, cost, sell))
-            }
-        }
-        return if (drafts.isNotEmpty()) drafts else getBrandTemplateItems(brand, "Ice-cream")
-    }
-
     fun saveInwardStockPurchase(
         brand: String,
         category: String,
@@ -1077,15 +984,47 @@ _Report generated by Refresh Soda App_
         paymentStatus: String,
         paymentMode: String,
         draftItems: List<InwardBillItemDraft>,
-        onComplete: () -> Unit
+        onComplete: (String?) -> Unit
     ) {
         viewModelScope.launch {
-            val totalBoxes = draftItems.sumOf { it.boxes }
-            val itemsSummary = draftItems.joinToString(", ") { "${it.name} (${it.boxes} Box)" }
+            val categoryName = category.trim()
+            val brandName = brand.trim()
+            if (categoryName.isBlank() || brandName.isBlank()) {
+                onComplete("Enter a supplier and choose or add a category.")
+                return@launch
+            }
+            if (draftItems.isEmpty() || draftItems.any {
+                    it.name.isBlank() || it.boxes !in 1..10000 ||
+                        it.costPrice !in 0.01..100000.0 || it.sellingPrice !in 0.01..100000.0
+                }) {
+                onComplete("Complete every item with a name, quantity, cost and selling price.")
+                return@launch
+            }
+            if (paidAmount !in 0.0..totalAmount) {
+                onComplete("Paid amount must be between zero and the bill total.")
+                return@launch
+            }
+            val validItems = draftItems
+
+            if (dao.getAllCategories().first().none { it.name.equals(categoryName, ignoreCase = true) }) {
+                dao.insertCategory(
+                    ProductCategory(
+                        id = UUID.randomUUID().toString(),
+                        name = categoryName,
+                        orderIndex = categories.value.size
+                    )
+                )
+            }
+            if (dao.getAllBrands().first().none { it.name.equals(brandName, ignoreCase = true) }) {
+                dao.insertBrand(ShopBrand(name = brandName))
+            }
+
+            val totalBoxes = validItems.sumOf { it.boxes }
+            val itemsSummary = validItems.joinToString(", ") { "${it.name} (${it.boxes} Box)" }
             val purchase = SupplierPurchase(
                 id = UUID.randomUUID().toString(),
-                brand = brand.trim(),
-                category = category.trim(),
+                brand = brandName,
+                category = categoryName,
                 billNumber = billNumber.trim().ifBlank { "INV-${(System.currentTimeMillis() % 10000)}" },
                 billDate = billDate.trim().ifBlank { todayDateString },
                 totalAmount = totalAmount,
@@ -1097,45 +1036,45 @@ _Report generated by Refresh Soda App_
             )
             dao.insertSupplierPurchase(purchase)
 
-            val existingProducts = dao.getAllProducts().first()
-            draftItems.forEach { draft ->
-                val existing = existingProducts.firstOrNull {
+            val existingProducts = dao.getAllProducts().first().toMutableList()
+            validItems.forEach { draft ->
+                val existingIndex = existingProducts.indexOfFirst {
                     it.name.equals(draft.name.trim(), ignoreCase = true) &&
-                    it.brand.equals(brand.trim(), ignoreCase = true)
+                    it.brand.equals(brandName, ignoreCase = true)
                 }
-                if (existing != null) {
-                    dao.insertProduct(
-                        existing.copy(
-                            sealedBoxes = existing.sealedBoxes + draft.boxes,
-                            costPrice = draft.costPrice,
-                            price = if (draft.sellingPrice > 0) draft.sellingPrice else existing.price
-                        )
-                    )
+                val updatedProduct = if (existingIndex >= 0) {
+                    val existing = existingProducts[existingIndex]
+                    existing.copy(
+                        sealedBoxes = existing.sealedBoxes + draft.boxes,
+                        category = categoryName,
+                        costPrice = draft.costPrice,
+                        price = draft.sellingPrice
+                    ).also { existingProducts[existingIndex] = it }
                 } else {
-                    dao.insertProduct(
-                        Product(
-                            id = UUID.randomUUID().toString(),
-                            name = draft.name.trim(),
-                            category = category.trim(),
-                            brand = brand.trim(),
-                            price = draft.sellingPrice,
-                            costPrice = draft.costPrice,
-                            sealedBoxes = draft.boxes
-                        )
-                    )
+                    Product(
+                        id = UUID.randomUUID().toString(),
+                        name = draft.name.trim(),
+                        category = categoryName,
+                        brand = brandName,
+                        price = draft.sellingPrice,
+                        costPrice = draft.costPrice,
+                        sealedBoxes = draft.boxes
+                    ).also { existingProducts.add(it) }
                 }
+                dao.insertProduct(updatedProduct)
+                firebaseSync.syncProduct(updatedProduct)
             }
 
             dao.insertAuditLog(
                 AuditLog(
                     id = UUID.randomUUID().toString(),
                     action = "STOCK_INWARD_BILL",
-                    details = "Inward $brand ($category): $totalBoxes Boxes, Bill ₹${totalAmount.toInt()} [$paymentStatus, Paid: ₹${paidAmount.toInt()}]"
+                    details = "Inward $brandName ($categoryName): $totalBoxes Boxes, Bill ₹${totalAmount.toInt()} [$paymentStatus, Paid: ₹${paidAmount.toInt()}]"
                 )
             )
 
             firebaseSync.syncPurchase(purchase)
-            onComplete()
+            onComplete(null)
         }
     }
 

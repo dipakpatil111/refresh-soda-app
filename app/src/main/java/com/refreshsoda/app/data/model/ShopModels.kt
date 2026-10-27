@@ -3,11 +3,17 @@ package com.refreshsoda.app.data.model
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
+@Entity(tableName = "brands")
+data class ShopBrand(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val name: String
+)
+
 @Entity(tableName = "user_profile")
 data class UserProfile(
     @PrimaryKey val id: String = "shop_profile",
-    val shopName: String = "Refresh Soda & Ice-cream",
-    val ownerName: String = "Dipak Patil",
+    val shopName: String = "",
+    val ownerName: String = "",
     val phone: String = "",
     val upiId: String = "",
     val address: String = ""
@@ -24,27 +30,31 @@ data class ProductCategory(
 data class Product(
     @PrimaryKey val id: String,
     val name: String,
-    val category: String, // User-defined category: Soda, Ice-cream, Milkshake, Cold Drink, etc.
-    val brand: String = "", // Vadilal, Hocco, Hajoori, Own Shop, etc.
+    val category: String,
+    val brand: String = "",
     val price: Double,
     val sealedBoxes: Int = 0,
-    val costPrice: Double = 0.0 // Purchase / Cost price to calculate profit
+    val costPrice: Double = 0.0
 )
 
 data class DraftProductItem(
-    var category: String,
-    var name: String,
-    var brand: String = "",
-    var price: Double = 20.0,
-    var costPrice: Double = 14.0,
-    var sealedBoxes: Int = 0
+    val category: String,
+    val name: String,
+    val brand: String = "",
+    val price: Double,
+    val costPrice: Double = 0.0,
+    val sealedBoxes: Int = 0
 )
 
 data class InwardBillItemDraft(
-    var name: String,
-    var boxes: Int = 1,
-    var costPrice: Double = 350.0, // Purchase rate per box
-    var sellingPrice: Double = 500.0 // Selling revenue per box
+    val name: String,
+    val boxes: Int = 0,
+    val costPrice: Double = 0.0,
+    val sellingPrice: Double = 0.0,
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val boxesInput: String = boxes.toString(),
+    val costPriceInput: String = costPrice.toString(),
+    val sellingPriceInput: String = sellingPrice.toString()
 ) {
     val lineTotal: Double get() = boxes * costPrice
     val profitPerBox: Double get() = sellingPrice - costPrice
@@ -54,14 +64,14 @@ data class InwardBillItemDraft(
 @Entity(tableName = "supplier_purchases")
 data class SupplierPurchase(
     @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
-    val brand: String, // "Hocco", "Vadilal", "Hajoori", etc.
-    val category: String = "Ice-cream", // "Ice-cream", "Soda", etc.
+    val brand: String,
+    val category: String = "",
     val billNumber: String = "",
-    val billDate: String, // YYYY-MM-DD
+    val billDate: String,
     val totalAmount: Double,
     val paidAmount: Double,
-    val paymentStatus: String = "PAID", // "PAID", "PARTIAL", "UNPAID"
-    val paymentMode: String = "UPI", // "CASH", "UPI", "BANK_TRANSFER", "UDHAR"
+    val paymentStatus: String = "PAID",
+    val paymentMode: String = "UPI",
     val totalBoxes: Int,
     val itemsSummary: String,
     val billImageUri: String? = null,
@@ -73,10 +83,10 @@ data class SaleTransaction(
     @PrimaryKey val id: String,
     val totalAmount: Double,
     val discountAmount: Double = 0.0,
-    val paymentMode: String, // CASH, UPI, UDHAR
+    val paymentMode: String,
     val customerName: String? = null,
     val itemsSummary: String,
-    val itemsDetails: String = "", // Stored as "Category|Name|Qty|Price;..."
+    val itemsDetails: String = "",
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -95,7 +105,7 @@ data class KhataRepayment(
     val customerId: String,
     val customerName: String,
     val amount: Double,
-    val paymentMode: String = "CASH", // CASH or UPI
+    val paymentMode: String = "CASH",
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -103,15 +113,15 @@ data class KhataRepayment(
 data class Expense(
     @PrimaryKey val id: String,
     val title: String,
-    val category: String, // Barf, Nimbu, Soda Mal, Doodh, Glasses, Bijli, Kiraya, Mazdoori, Repair, Anya
+    val category: String,
     val amount: Double,
-    val paymentMode: String, // CASH, UPI
+    val paymentMode: String,
     val timestamp: Long = System.currentTimeMillis()
 )
 
 @Entity(tableName = "day_closings")
 data class DayClosing(
-    @PrimaryKey val date: String, // YYYY-MM-DD
+    @PrimaryKey val date: String,
     val openingCash: Double,
     val cashSales: Double,
     val udharCashRepayment: Double,
@@ -124,7 +134,7 @@ data class DayClosing(
 
 @Entity(tableName = "paytm_settlements")
 data class PaytmSettlement(
-    @PrimaryKey val date: String, // YYYY-MM-DD
+    @PrimaryKey val date: String,
     val totalUpiCollection: Double,
     val chargeDeduction: Double = 0.0,
     val netBankAmount: Double,
@@ -135,7 +145,7 @@ data class PaytmSettlement(
 @Entity(tableName = "audit_logs")
 data class AuditLog(
     @PrimaryKey val id: String,
-    val action: String, // SALE_DELETED, STOCK_ADDED, BOX_OPENED, EXPENSE_ADDED, CATEGORY_ADDED, BULK_IMPORTED, USER_LOGIN, USER_REGISTER
+    val action: String,
     val details: String,
     val timestamp: Long = System.currentTimeMillis()
 )
@@ -146,9 +156,12 @@ data class UserAccount(
     val name: String,
     val emailOrPhone: String,
     val password: String,
-    val role: String = "OWNER", // "OWNER" or "STAFF"
-    val shopName: String = "Refresh Soda & Ice-cream",
+    val role: String = "OWNER",
+    val shopName: String = "",
     val phone: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val lastLoginAt: Long = System.currentTimeMillis()
 )
+
+fun String.isIceCreamCategory(): Boolean =
+    lowercase().filter(Char::isLetterOrDigit).contains("icecream")

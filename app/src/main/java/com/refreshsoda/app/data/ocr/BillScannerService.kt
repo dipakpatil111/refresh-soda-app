@@ -42,67 +42,112 @@ object BillScannerService {
     )
 
     fun parseInvoiceText(text: String, fallbackBrand: String): ParsedInvoiceData {
-        var brand: String? = null
         var invoiceNo: String? = null
         val items = mutableListOf<InwardBillItemDraft>()
-
-        val lower = text.lowercase()
-        if (lower.contains("hocco")) brand = "Hocco"
-        else if (lower.contains("vadilal")) brand = "Vadilal"
-        else if (lower.contains("hajoori")) brand = "Hajoori"
-        else if (lower.contains("amul")) brand = "Amul"
-
         val lines = text.lines().map { it.trim() }.filter { it.isNotBlank() }
 
-        // Find invoice number pattern
-        val invRegex = Regex("""(?:inv(?:oice)?|bill|no|memo)\s*[:#.-]?\s*([A-Za-z0-9\-_/]+)""", RegexOption.IGNORE_CASE)
+        val invRegex = Regex("""(?:invoice\s*no|inv\s*no|bill\s*no)[.:\s]*([A-Za-z0-9\-_/]+)""", RegexOption.IGNORE_CASE)
         for (line in lines) {
             val match = invRegex.find(line)
             if (match != null && invoiceNo == null) {
-                invoiceNo = match.groupValues.getOrNull(1)
+                invoiceNo = match.groupValues[1]
+                break
             }
         }
-
-        // Parse line items
-        // Common invoice line formats:
-        // "1. Mango Dolly 5 Box 320 480"
-        // "Hocco Chocobar Qty: 4 Rate: 450"
-        // "Jeera Soda 10 220 360"
-        val numberRegex = Regex("""\b\d+(?:\.\d+)?\b""")
 
         for (line in lines) {
-            val lowerLine = line.lowercase()
-            // Ignore headers and totals
-            if (lowerLine.contains("total") || lowerLine.contains("subtotal") || lowerLine.contains("gst") ||
-                lowerLine.contains("invoice") || lowerLine.contains("date") || lowerLine.contains("signature")) {
-                continue
+            if (isInvoiceHeader(line)) continue
+
+            val parsedItem = parseDelimitedItem(line)
+                ?: parseBoxInvoiceItem(line)
+                ?: parseDiscountInvoiceItem(line)
+                ?: continue
+
+            val itemName = cleanItemName(parsedItem.name)
+            if (itemName.length < 2) continue
+            val nameWithBrand = if (fallbackBrand.isNotBlank() && !itemName.contains(fallbackBrand, ignoreCase = true)) {
+                "${fallbackBrand.trim()} $itemName"
+            } else {
+                itemName
             }
-
-            val numbers = numberRegex.findAll(line).map { it.value }.toList()
-            if (numbers.size >= 2) {
-                // Remove digits to get item title
-                var name = line.replace(Regex("""\b\d+(?:\.\d+)?\b"""), "")
-                    .replace(Regex("""[₹,:\-_/|]"""), " ")
-                    .replace(Regex("""\b(?:box|boxes|qty|rate|mrp|rs|pcs)\b""", RegexOption.IGNORE_CASE), "")
-                    .trim()
-
-                if (name.length > 2) {
-                    val qty = numbers.firstOrNull()?.toIntOrNull() ?: 1
-                    val cost = numbers.getOrNull(1)?.toDoubleOrNull() ?: 350.0
-                    val sell = numbers.getOrNull(2)?.toDoubleOrNull() ?: (cost * 1.4)
-
-                    // Normalize name with brand if missing
-                    val activeBrand = brand ?: fallbackBrand
-                    if (!name.contains(activeBrand, ignoreCase = true)) {
-                        name = "$activeBrand $name"
-                    }
-
-                    items.add(InwardBillItemDraft(name, qty, cost, sell))
-                }
-            }
+            items.add(
+                InwardBillItemDraft(
+                    name = nameWithBrand,
+                    boxes = parsedItem.boxes,
+                    costPrice = parsedItem.costPrice,
+                    sellingPrice = parsedItem.sellingPrice
+                )
+            )
         }
 
-        return ParsedInvoiceData(brand, invoiceNo, items)
+        return ParsedInvoiceData(
+            detectedBrand = fallbackBrand,
+            detectedInvoiceNo = invoiceNo,
+            items = items
+        )
     }
-}
 
+    private data class ParsedItem(
+        val name: String,
+        val boxes: Int,
+        val costPrice: Double,
+        val sellingPrice: Double
+    )
+
+    private fun isInvoiceHeader(line: String): Boolean {
+        val value = line.lowercase()
+        return listOf(
+            "road no", "plot no", "udhyog", "fssai", "gstin", "subtotal",
+            "original", "tax invoice", "account holder", "description",
+            "sgst", "cgst", "total invoice", "receiver", "address"
+        ).any { marker -> value.contains(marker) }
+    }
+
+    private fun parseDelimitedItem(line: String): ParsedItem? {
+        val match = Regex(
+            """^\s*(.+?)\s*[,|]\s*(\d{1,5})\s*[,|]\s*([\d.]+)\s*[,|]\s*([\d.]+)\s*$"""
+        ).matchEntire(line) ?: return null
+        val boxes = match.groupValues[2].toIntOrNull() ?: return null
+        val cost = match.groupValues[3].toDoubleOrNull() ?: return null
+        val selling = match.groupValues[4].toDoubleOrNull() ?: return null
+        return parsedItem(match.groupValues[1], boxes, cost, selling)
+    }
+
+    private fun parseBoxInvoiceItem(line: String): ParsedItem? {
+        val match = Regex(
+            """(?i)(.+?)\s+([\d,]+(?:\.\d{1,2})?)\s+(\d{1,5})\s+box(?:es)?\s+([\d,]+(?:\.\d{1,2})?)\b"""
+        ).find(line) ?: return null
+        val mrp = match.groupValues[2].toMoney() ?: return null
+        val boxes = match.groupValues[3].toIntOrNull() ?: return null
+        val cost = match.groupValues[4].toMoney() ?: return null
+        return parsedItem(match.groupValues[1], boxes, cost, mrp)
+    }
+
+    private fun parseDiscountInvoiceItem(line: String): ParsedItem? {
+        val match = Regex(
+            """^\s*\d{1,3}\s+(.+?)\s+(\d{1,5})\s+([\d,]+\.\d{2})\s+[\d,]+\.\d{2}\s+[\d,]+\.\d{2}\s+[\d,]+\.\d{2}\s+([\d,]+\.\d{2})\s*$"""
+        ).matchEntire(line) ?: return null
+        val boxes = match.groupValues[2].toIntOrNull() ?: return null
+        val selling = match.groupValues[3].toMoney() ?: return null
+        val totalCost = match.groupValues[4].toMoney() ?: return null
+        val cost = totalCost / boxes.coerceAtLeast(1)
+        return parsedItem(match.groupValues[1], boxes, cost, selling)
+    }
+
+    private fun parsedItem(name: String, boxes: Int, costPrice: Double, sellingPrice: Double): ParsedItem? {
+        if (boxes !in 1..10000 || costPrice !in 0.01..100000.0 || sellingPrice !in 0.01..100000.0) return null
+        return ParsedItem(name, boxes, costPrice, sellingPrice)
+    }
+
+    private fun cleanItemName(value: String): String =
+        value
+            .replace(Regex("""^\s*\d{6,10}\s+"""), " ")
+            .replace(Regex("""\b\d{6,10}\b"""), " ")
+            .replace(Regex("""\b(?:scheme|hsn|sac)\b""", RegexOption.IGNORE_CASE), " ")
+            .replace(Regex("""[\[\]_|]+"""), " ")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+
+    private fun String.toMoney(): Double? =
+        replace(",", "").toDoubleOrNull()
+}

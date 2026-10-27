@@ -38,6 +38,7 @@ import com.refreshsoda.app.data.model.SaleTransaction
 import com.refreshsoda.app.data.model.UserAccount
 import com.refreshsoda.app.data.model.SupplierPurchase
 import com.refreshsoda.app.data.model.InwardBillItemDraft
+import com.refreshsoda.app.data.model.isIceCreamCategory
 import com.refreshsoda.app.data.ocr.BillScannerService
 import com.refreshsoda.app.ui.i18n.AppLanguage
 import com.refreshsoda.app.ui.theme.AppThemeMode
@@ -620,9 +621,8 @@ fun DashboardScreen(
     var showOpenBoxDialog by remember { mutableStateOf(false) }
     var selectedSaleForReceipt by remember { mutableStateOf<SaleTransaction?>(null) }
 
-    val lowStockItems = products.filter { it.sealedBoxes in 1..2 }
-    val outOfStockItems = products.filter { it.sealedBoxes == 0 }
-
+    val lowStockItems = products.filter { it.category.isIceCreamCategory() && it.sealedBoxes in 1..2 }
+    val outOfStockItems = products.filter { it.category.isIceCreamCategory() && it.sealedBoxes == 0 }
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -750,40 +750,6 @@ fun DashboardScreen(
         }
 
         // QUICK 1-TAP EXPENSES ROW
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("⚡ त्वरित दुकान खर्चा (1-Tap Quick Expense):", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        val quickExps = listOf(
-                            Triple("❄️ बर्फ", "Raw Material", 150.0),
-                            Triple("🍋 नींबू", "Raw Material", 100.0),
-                            Triple("🥛 दूध", "Raw Material", 300.0),
-                            Triple("🫧 गैस", "Raw Material", 500.0),
-                            Triple("⚡ बिजली", "Shop Expenses", 200.0),
-                            Triple("🧻 ग्लास", "Supplies", 120.0)
-                        )
-                        items(quickExps) { (label, cat, amount) ->
-                            SuggestionChip(
-                                onClick = {
-                                    viewModel.addQuickExpense(cat, label.replace(Regex("[^a-zA-Z0-9\u0900-\u097F]"), "").trim(), amount)
-                                    Toast.makeText(context, "$label ₹${amount.toInt()} खर्चा दर्ज!", Toast.LENGTH_SHORT).show()
-                                },
-                                label = { Text("$label ₹${amount.toInt()}", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
         // LOW STOCK RED WARNING BADGE
         if (lowStockItems.isNotEmpty() || outOfStockItems.isNotEmpty()) {
             item {
@@ -1500,29 +1466,19 @@ fun POSScreen(viewModel: ShopViewModel) {
 
     if (showAddCategoryDialog) {
         var catName by remember { mutableStateOf("") }
-        val sampleCats = listOf("Soda", "Ice-cream", "Milkshake", "Cold Drink", "Snacks")
 
         AlertDialog(
             onDismissRequest = { showAddCategoryDialog = false },
             title = { Text(viewModel.getString("add_category_btn"), fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("e.g. Soda, Ice-cream, Milkshake etc.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Create a category for your products.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedTextField(
                         value = catName,
                         onValueChange = { catName = it },
                         label = { Text("Category Name") },
                         singleLine = true
                     )
-                    Text("Quick Suggestions:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(sampleCats) { sample ->
-                            SuggestionChip(
-                                onClick = { catName = sample },
-                                label = { Text(sample, fontSize = 11.sp) }
-                            )
-                        }
-                    }
                 }
             },
             confirmButton = {
@@ -1544,7 +1500,7 @@ fun POSScreen(viewModel: ShopViewModel) {
 
     if (showAddProductDialog) {
         var name by remember { mutableStateOf("") }
-        var category by remember { mutableStateOf(if (selectedCategoryName != "All") selectedCategoryName else (categories.firstOrNull()?.name ?: "Soda")) }
+        var category by remember { mutableStateOf(if (selectedCategoryName != "All") selectedCategoryName else categories.firstOrNull()?.name.orEmpty()) }
         var brand by remember { mutableStateOf("") }
         var priceText by remember { mutableStateOf("") }
         var boxText by remember { mutableStateOf("0") }
@@ -1559,7 +1515,7 @@ fun POSScreen(viewModel: ShopViewModel) {
                         OutlinedTextField(
                             value = category,
                             onValueChange = { category = it },
-                            label = { Text("Category Name (e.g. Soda)") },
+                            label = { Text("Category name") },
                             singleLine = true
                         )
                     } else {
@@ -1577,7 +1533,7 @@ fun POSScreen(viewModel: ShopViewModel) {
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
-                        label = { Text("Item Name (e.g. Jeera Soda)") },
+                        label = { Text("Item name") },
                         singleLine = true
                     )
                     OutlinedTextField(
@@ -1589,7 +1545,7 @@ fun POSScreen(viewModel: ShopViewModel) {
                     OutlinedTextField(
                         value = brand,
                         onValueChange = { brand = it },
-                        label = { Text("Brand (e.g. Hajoori, Vadilal)") },
+                        label = { Text("Brand (optional)") },
                         singleLine = true
                     )
                     OutlinedTextField(
@@ -1604,7 +1560,10 @@ fun POSScreen(viewModel: ShopViewModel) {
                 Button(onClick = {
                     val p = priceText.toDoubleOrNull() ?: 0.0
                     val b = boxText.toIntOrNull() ?: 0
-                    if (name.isNotBlank() && p > 0) {
+                    if (name.isNotBlank() && category.isNotBlank() && p > 0 && b >= 0) {
+                        if (categories.none { it.name.equals(category.trim(), ignoreCase = true) }) {
+                            viewModel.addCategory(category.trim())
+                        }
                         viewModel.addProduct(name, category, brand, p, b)
                         showAddProductDialog = false
                     }
@@ -1833,7 +1792,9 @@ fun SmartBulkImportDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val categories by viewModel.categories.collectAsState()
     var rawText by remember { mutableStateOf("") }
+    var imageCategory by remember { mutableStateOf("") }
     var selectedFileName by remember { mutableStateOf<String?>(null) }
     var draftItems by remember { mutableStateOf(listOf<DraftProductItem>()) }
     var isPreviewReady by remember { mutableStateOf(false) }
@@ -1850,8 +1811,9 @@ fun SmartBulkImportDialog(
 
             if (isImage) {
                 isScanningFile = true
+                draftItems = emptyList()
                 Toast.makeText(context, "Scanning image with Google ML Kit...", Toast.LENGTH_SHORT).show()
-                BillScannerService.scanBillImage(context, uri, "Soda") { success, text, _, _, items ->
+                BillScannerService.scanBillImage(context, uri, "") { _, text, _, _, items ->
                     isScanningFile = false
                     if (text.isNotBlank()) {
                         rawText = text
@@ -1861,7 +1823,7 @@ fun SmartBulkImportDialog(
                         } else if (items.isNotEmpty()) {
                             draftItems = items.map {
                                 DraftProductItem(
-                                    category = "Soda",
+                                    category = imageCategory.trim(),
                                     name = it.name,
                                     brand = "",
                                     price = it.sellingPrice,
@@ -1870,8 +1832,12 @@ fun SmartBulkImportDialog(
                                 )
                             }
                         }
-                        isPreviewReady = true
-                        Toast.makeText(context, "ML Kit OCR parsed ${draftItems.size} items!", Toast.LENGTH_SHORT).show()
+                        if (draftItems.isNotEmpty()) {
+                            isPreviewReady = true
+                            Toast.makeText(context, "ML Kit OCR parsed ${draftItems.size} items!", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "No product rows recognized. Enter the menu as text.", Toast.LENGTH_LONG).show()
+                        }
                     } else {
                         Toast.makeText(context, "No text found in image.", Toast.LENGTH_SHORT).show()
                     }
@@ -1894,26 +1860,6 @@ fun SmartBulkImportDialog(
         }
     }
 
-    val sodaTemplate = """
-[Soda]
-Jeera Masala Soda, 20, Hajoori, 10
-Limbu Soda, 20, Hajoori, 12
-Kala Khatta Soda, 25, Hajoori, 8
-Blueberry Soda, 25, Hajoori, 6
-Orange Soda, 20, Hajoori, 4
-
-[Ice-cream]
-Vanilla Cup, 10, Vadilal, 10
-Butterscotch Cup, 20, Vadilal, 8
-Choco Bar, 30, Vadilal, 6
-Choco Cone, 40, Hocco, 5
-Matka Kulfi, 50, Hocco, 4
-
-[Cold Drink]
-Sprite 250ml, 20, CocaCola, 5
-Thums Up 250ml, 20, CocaCola, 5
-    """.trimIndent()
-
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("📄 Smart Category & Item Import", fontWeight = FontWeight.Bold, fontSize = 17.sp) },
@@ -1931,6 +1877,25 @@ Thums Up 250ml, 20, CocaCola, 5
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
+                    OutlinedTextField(
+                        value = imageCategory,
+                        onValueChange = { imageCategory = it },
+                        label = { Text("Category for image items") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (categories.isNotEmpty()) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(categories) { category ->
+                                FilterChip(
+                                    selected = imageCategory.equals(category.name, ignoreCase = true),
+                                    onClick = { imageCategory = category.name },
+                                    label = { Text(category.name, fontSize = 11.sp) }
+                                )
+                            }
+                        }
+                    }
+
                     FilledTonalButton(
                         onClick = { filePicker.launch("*/*") },
                         modifier = Modifier.fillMaxWidth(),
@@ -1946,30 +1911,21 @@ Thums Up 250ml, 20, CocaCola, 5
                     OutlinedTextField(
                         value = rawText,
                         onValueChange = { rawText = it },
-                        placeholder = { Text("e.g.\n[Soda]\nJeera Soda, 20, Hajoori\nLimbu Soda, 20\n\n[Ice-cream]\nVanilla Cup, 10") },
+                        placeholder = { Text("[Category]\nItem name, price, brand, boxes, cost price") },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(130.dp),
                         maxLines = 8
                     )
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Quick Demo:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        SuggestionChip(
-                            onClick = { rawText = sodaTemplate },
-                            label = { Text("Load Standard Menu", fontSize = 11.sp) }
-                        )
-                    }
-
                     Button(
                         onClick = {
                             if (rawText.isNotBlank()) {
                                 draftItems = viewModel.parseTextToDraftItems(rawText)
-                                isPreviewReady = true
+                                isPreviewReady = draftItems.isNotEmpty()
+                                if (draftItems.isEmpty()) {
+                                    Toast.makeText(context, "No valid products found. Include a category and item price.", Toast.LENGTH_LONG).show()
+                                }
                             } else {
                                 Toast.makeText(context, "Please enter text or pick file", Toast.LENGTH_SHORT).show()
                             }
@@ -2011,7 +1967,18 @@ Thums Up 250ml, 20, CocaCola, 5
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(item.name, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                        Text("Cat: ${item.category} • Brand: ${item.brand.ifBlank { "N/A" }} • Box: ${item.sealedBoxes}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        OutlinedTextField(
+                                            value = item.category,
+                                            onValueChange = { category ->
+                                                draftItems = draftItems.toMutableList().apply {
+                                                    set(idx, item.copy(category = category))
+                                                }
+                                            },
+                                            label = { Text("Category") },
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                        Text("Brand: ${item.brand.ifBlank { "—" }} • Boxes: ${item.sealedBoxes}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                         Text("₹${item.price.toInt()}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
@@ -2035,6 +2002,10 @@ Thums Up 250ml, 20, CocaCola, 5
             if (isPreviewReady) {
                 Button(
                     onClick = {
+                        if (draftItems.any { it.category.isBlank() || it.name.isBlank() || it.price <= 0 }) {
+                            Toast.makeText(context, "Set a category, item name and valid price for every row.", Toast.LENGTH_LONG).show()
+                            return@Button
+                        }
                         viewModel.bulkImportCategoriesAndProducts(draftItems)
                         Toast.makeText(context, "${draftItems.size} items saved successfully!", Toast.LENGTH_SHORT).show()
                         onDismiss()
@@ -2052,7 +2023,7 @@ Thums Up 250ml, 20, CocaCola, 5
 }
 
 // ==============================================================================
-// 4A. INWARD STOCK DISTRIBUTOR BILL DIALOG (Hocco, Vadilal, Hajoori)
+// 4A. INWARD STOCK AND SUPPLIER BILL DIALOG
 // ==============================================================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -2062,26 +2033,23 @@ fun InwardBillDialog(
 ) {
     val context = LocalContext.current
     val categories by viewModel.categories.collectAsState()
+    val brands by viewModel.brands.collectAsState()
 
-    var selectedBrand by remember { mutableStateOf("Hocco") }
-    var selectedCategory by remember { mutableStateOf("Ice-cream") }
-    var billNumber by remember { mutableStateOf("HOC-${System.currentTimeMillis() % 10000}") }
+    var selectedBrand by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf("") }
+    var billNumber by remember { mutableStateOf("") }
     var billDate by remember { mutableStateOf(viewModel.todayDateString) }
-    var paymentStatus by remember { mutableStateOf("PAID") } // PAID, PARTIAL, UNPAID
-    var paymentMode by remember { mutableStateOf("UPI") } // UPI, CASH, BANK
+    var paymentStatus by remember { mutableStateOf("PAID") }
+    var paymentMode by remember { mutableStateOf("UPI") }
     var paidAmountText by remember { mutableStateOf("") }
     var customBillText by remember { mutableStateOf("") }
     var showPasteSection by remember { mutableStateOf(false) }
+    var showNewCategoryDialog by remember { mutableStateOf(false) }
+    var newCategoryName by remember { mutableStateOf("") }
 
     val draftItems = remember { mutableStateListOf<InwardBillItemDraft>() }
 
     var isScanning by remember { mutableStateOf(false) }
-
-    // Initialize or reload template whenever brand or category changes
-    LaunchedEffect(selectedBrand, selectedCategory) {
-        draftItems.clear()
-        draftItems.addAll(viewModel.getBrandTemplateItems(selectedBrand, selectedCategory))
-    }
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
@@ -2104,9 +2072,12 @@ fun InwardBillDialog(
                         if (!parsed.detectedInvoiceNo.isNullOrBlank()) billNumber = parsed.detectedInvoiceNo
                         Toast.makeText(context, "Parsed ${parsed.items.size} items!", Toast.LENGTH_SHORT).show()
                     } else {
-                        draftItems.clear()
-                        draftItems.addAll(viewModel.getBrandTemplateItems(selectedBrand, selectedCategory))
-                        Toast.makeText(context, "Template items loaded (${draftItems.size}).", Toast.LENGTH_SHORT).show()
+                        val message = if (!success && rawText.isNotBlank()) {
+                            "Bill scan failed: $rawText"
+                        } else {
+                            "No readable invoice lines found. Please enter the items manually."
+                        }
+                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                     }
                 }
             }
@@ -2140,54 +2111,73 @@ fun InwardBillDialog(
             ) {
                 // 1. BRAND SELECTOR
                 item {
-                    Text(viewModel.getString("select_brand_label"), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("Hocco", "Vadilal", "Hajoori", "Amul").forEach { brand ->
-                            FilterChip(
-                                selected = selectedBrand.equals(brand, ignoreCase = true),
-                                onClick = {
-                                    selectedBrand = brand
-                                    billNumber = "${brand.take(3).uppercase()}-${System.currentTimeMillis() % 10000}"
-                                },
-                                label = { Text(brand, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                            )
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        OutlinedTextField(
+                            value = selectedBrand,
+                            onValueChange = { selectedBrand = it },
+                            label = { Text(viewModel.getString("select_brand_label")) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        if (brands.isNotEmpty()) {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(brands) { brand ->
+                                    FilterChip(
+                                        selected = selectedBrand.equals(brand.name, ignoreCase = true),
+                                        onClick = { selectedBrand = brand.name },
+                                        label = { Text(brand.name, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
 
                 // 2. CATEGORY SELECTOR
                 item {
-                    Text(viewModel.getString("select_category_label"), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    val catList = if (categories.isNotEmpty()) categories.map { it.name } else listOf("Ice-cream", "Soda", "Milkshake", "Cold Drink")
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        catList.take(4).forEach { cat ->
-                            FilterChip(
-                                selected = selectedCategory.equals(cat, ignoreCase = true),
-                                onClick = { selectedCategory = cat },
-                                label = { Text(cat, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                            )
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            viewModel.getString("select_category_label"),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            LazyRow(
+                                modifier = Modifier.weight(1f),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                items(categories) { category ->
+                                    FilterChip(
+                                        selected = selectedCategory.equals(category.name, ignoreCase = true),
+                                        onClick = { selectedCategory = category.name },
+                                        label = { Text(category.name, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                                    )
+                                }
+                            }
+                            TextButton(onClick = { showNewCategoryDialog = true }) {
+                                Text("+ New", fontSize = 11.sp)
+                            }
                         }
                     }
                 }
 
                 // 3. BILL NUMBER & DATE
                 item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         OutlinedTextField(
                             value = billNumber,
                             onValueChange = { billNumber = it },
                             label = { Text(viewModel.getString("bill_number_label")) },
                             singleLine = true,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.fillMaxWidth()
                         )
                         OutlinedTextField(
                             value = billDate,
                             onValueChange = { billDate = it },
                             label = { Text(viewModel.getString("bill_date_label")) },
                             singleLine = true,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
                 }
@@ -2213,14 +2203,16 @@ fun InwardBillDialog(
                 // 5. PAYMENT MODE
                 if (paymentStatus != "UNPAID") {
                     item {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(viewModel.getString("payment_mode_label") + ":", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            listOf("UPI", "CASH", "BANK").forEach { mode ->
-                                FilterChip(
-                                    selected = paymentMode == mode,
-                                    onClick = { paymentMode = mode },
-                                    label = { Text(mode, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
-                                )
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(viewModel.getString("payment_mode_label"), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(listOf("UPI", "CASH", "BANK")) { mode ->
+                                    FilterChip(
+                                        selected = paymentMode == mode,
+                                        onClick = { paymentMode = mode },
+                                        label = { Text(mode, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                                    )
+                                }
                             }
                         }
                     }
@@ -2277,7 +2269,7 @@ fun InwardBillDialog(
                             OutlinedTextField(
                                 value = customBillText,
                                 onValueChange = { customBillText = it },
-                                placeholder = { Text("Paste bill lines e.g.:\nHocco Belgian Chocolate, 5, 450, 720\nHocco Mango Dolly, 4, 300, 480", fontSize = 11.sp) },
+                                placeholder = { Text("One item per line: name, quantity, cost, selling price", fontSize = 11.sp) },
                                 modifier = Modifier.fillMaxWidth().height(90.dp)
                             )
                             Button(
@@ -2288,13 +2280,11 @@ fun InwardBillDialog(
                                         draftItems.addAll(parsedOcr.items)
                                         if (!parsedOcr.detectedBrand.isNullOrBlank()) selectedBrand = parsedOcr.detectedBrand
                                         if (!parsedOcr.detectedInvoiceNo.isNullOrBlank()) billNumber = parsedOcr.detectedInvoiceNo
+                                        Toast.makeText(context, "Loaded ${parsedOcr.items.size} items", Toast.LENGTH_SHORT).show()
                                     } else {
-                                        val parsed = viewModel.parseInwardBillText(selectedBrand, customBillText)
-                                        draftItems.clear()
-                                        draftItems.addAll(parsed)
+                                        Toast.makeText(context, "No valid item lines found. Use: name, quantity, cost, selling price.", Toast.LENGTH_LONG).show()
                                     }
                                     showPasteSection = false
-                                    Toast.makeText(context, "Loaded ${draftItems.size} items", Toast.LENGTH_SHORT).show()
                                 },
                                 modifier = Modifier.padding(top = 4.dp),
                                 shape = RoundedCornerShape(8.dp)
@@ -2310,8 +2300,8 @@ fun InwardBillDialog(
                     Text("📦 इनवॉइस आइटम्स & बॉक्स रिव्यू (${draftItems.size} Items):", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
 
-                items(draftItems.size) { idx ->
-                    val draft = draftItems[idx]
+                items(draftItems, key = { it.id }) { draft ->
+                    val idx = draftItems.indexOfFirst { it.id == draft.id }
                     Surface(
                         shape = RoundedCornerShape(10.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
@@ -2323,7 +2313,13 @@ fun InwardBillDialog(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(draft.name, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                OutlinedTextField(
+                                    value = draft.name,
+                                    onValueChange = { draftItems[idx] = draft.copy(name = it) },
+                                    label = { Text("Product name", fontSize = 9.sp) },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
                                 IconButton(
                                     onClick = { draftItems.removeAt(idx) },
                                     modifier = Modifier.size(24.dp)
@@ -2338,22 +2334,37 @@ fun InwardBillDialog(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 OutlinedTextField(
-                                    value = draft.boxes.toString(),
-                                    onValueChange = { draft.boxes = it.toIntOrNull() ?: 1 },
+                                    value = draft.boxesInput,
+                                    onValueChange = {
+                                        draftItems[idx] = draft.copy(
+                                            boxesInput = it,
+                                            boxes = it.toIntOrNull() ?: 0
+                                        )
+                                    },
                                     label = { Text("Boxes", fontSize = 9.sp) },
                                     singleLine = true,
                                     modifier = Modifier.weight(1f)
                                 )
                                 OutlinedTextField(
-                                    value = draft.costPrice.toInt().toString(),
-                                    onValueChange = { draft.costPrice = it.toDoubleOrNull() ?: 0.0 },
+                                    value = draft.costPriceInput,
+                                    onValueChange = {
+                                        draftItems[idx] = draft.copy(
+                                            costPriceInput = it,
+                                            costPrice = it.toDoubleOrNull() ?: 0.0
+                                        )
+                                    },
                                     label = { Text("Cost ₹", fontSize = 9.sp) },
                                     singleLine = true,
                                     modifier = Modifier.weight(1f)
                                 )
                                 OutlinedTextField(
-                                    value = draft.sellingPrice.toInt().toString(),
-                                    onValueChange = { draft.sellingPrice = it.toDoubleOrNull() ?: 0.0 },
+                                    value = draft.sellingPriceInput,
+                                    onValueChange = {
+                                        draftItems[idx] = draft.copy(
+                                            sellingPriceInput = it,
+                                            sellingPrice = it.toDoubleOrNull() ?: 0.0
+                                        )
+                                    },
                                     label = { Text("MRP ₹", fontSize = 9.sp) },
                                     singleLine = true,
                                     modifier = Modifier.weight(1f)
@@ -2380,7 +2391,7 @@ fun InwardBillDialog(
                 item {
                     TextButton(
                         onClick = {
-                            draftItems.add(InwardBillItemDraft("$selectedBrand New Item", 2, 350.0, 500.0))
+                            draftItems.add(InwardBillItemDraft(name = "", boxes = 0))
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -2423,11 +2434,26 @@ fun InwardBillDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (draftItems.isEmpty()) {
-                        Toast.makeText(context, "Please add items to inward bill!", Toast.LENGTH_SHORT).show()
+                    if (selectedBrand.isBlank() || selectedCategory.isBlank()) {
+                        Toast.makeText(context, "Enter a supplier and choose or add a category.", Toast.LENGTH_SHORT).show()
                         return@Button
                     }
-                    val paid = if (paymentStatus == "PAID") totalCost else if (paymentStatus == "PARTIAL") (paidAmountText.toDoubleOrNull() ?: (totalCost / 2)) else 0.0
+                    if (draftItems.isEmpty() || draftItems.any {
+                            it.name.isBlank() || it.boxes !in 1..10000 ||
+                                it.costPrice !in 0.01..100000.0 || it.sellingPrice !in 0.01..100000.0
+                        }) {
+                        Toast.makeText(context, "Complete each item with a name, quantity, cost and selling price.", Toast.LENGTH_LONG).show()
+                        return@Button
+                    }
+                    val paid = if (paymentStatus == "PAID") totalCost else if (paymentStatus == "PARTIAL") {
+                        paidAmountText.toDoubleOrNull()?.takeIf { it in 0.0..totalCost }
+                    } else {
+                        0.0
+                    }
+                    if (paid == null) {
+                        Toast.makeText(context, "Enter a valid amount paid between ₹0 and the bill total.", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
                     viewModel.saveInwardStockPurchase(
                         brand = selectedBrand,
                         category = selectedCategory,
@@ -2438,9 +2464,13 @@ fun InwardBillDialog(
                         paymentStatus = paymentStatus,
                         paymentMode = paymentMode,
                         draftItems = draftItems.toList()
-                    ) {
-                        Toast.makeText(context, viewModel.getString("inward_success_msg"), Toast.LENGTH_LONG).show()
-                        onDismiss()
+                    ) { error ->
+                        if (error == null) {
+                            Toast.makeText(context, viewModel.getString("inward_success_msg"), Toast.LENGTH_LONG).show()
+                            onDismiss()
+                        } else {
+                            Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                        }
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A))
@@ -2452,6 +2482,40 @@ fun InwardBillDialog(
             TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
+
+    if (showNewCategoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showNewCategoryDialog = false },
+            title = { Text("Add category") },
+            text = {
+                OutlinedTextField(
+                    value = newCategoryName,
+                    onValueChange = { newCategoryName = it },
+                    label = { Text("Category name") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val categoryName = newCategoryName.trim()
+                        if (categoryName.isNotBlank()) {
+                            viewModel.addCategory(categoryName)
+                            selectedCategory = categoryName
+                            newCategoryName = ""
+                            showNewCategoryDialog = false
+                        }
+                    },
+                    enabled = newCategoryName.isNotBlank()
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNewCategoryDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
 }
 
 // ==============================================================================
@@ -2529,32 +2593,6 @@ fun InventoryScreen(viewModel: ShopViewModel) {
                         }
                     }
 
-                    // Brand Breakdown: Hocco vs Vadilal
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Column(modifier = Modifier.padding(8.dp)) {
-                                Text("Hocco Ice-cream", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEA580C))
-                                Text("बिक्री: ₹${iceCreamProfit.hoccoRevenue.toInt()}", fontSize = 10.sp)
-                                Text("मुनाफ़ा: +₹${iceCreamProfit.hoccoProfit.toInt()}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
-                            }
-                        }
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Column(modifier = Modifier.padding(8.dp)) {
-                                Text("Vadilal Ice-cream", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7))
-                                Text("बिक्री: ₹${iceCreamProfit.vadilalRevenue.toInt()}", fontSize = 10.sp)
-                                Text("मुनाफ़ा: +₹${iceCreamProfit.vadilalProfit.toInt()}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
-                            }
-                        }
-                    }
-
                     // Prominent button to upload / inward stock bill!
                     Button(
                         onClick = { showInwardDialog = true },
@@ -2619,7 +2657,7 @@ fun InventoryScreen(viewModel: ShopViewModel) {
             }
         } else {
             items(filtered) { item ->
-                val isLowStock = item.sealedBoxes <= 2
+                val isLowStock = item.category.isIceCreamCategory() && item.sealedBoxes <= 2
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     shape = RoundedCornerShape(14.dp),
@@ -3157,37 +3195,6 @@ fun DailyExpensesView(viewModel: ShopViewModel) {
             }
         }
 
-        // 1-TAP QUICK EXPENSE SHORTCUTS
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("⚡ 1-Tap त्वरित खर्चे (Quick Repeat):", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        val quickExps = listOf(
-                            Triple("❄️ बर्फ", "❄️ बर्फ (Ice)", 150.0),
-                            Triple("🍋 नींबू", "🍋 नींबू (Lemons)", 100.0),
-                            Triple("🥛 दूध", "🥛 दूध व शेक सामग्री (Milk & Shake)", 300.0),
-                            Triple("🫧 गैस", "🥤 सोडे का माल व गैस (Syrup & Gas)", 500.0),
-                            Triple("🧻 ग्लास", "🧻 ग्लास व स्ट्रॉ (Glasses & Straws)", 120.0),
-                            Triple("💡 बिजली", "💡 बिजली बिल (Electricity Bill)", 200.0)
-                        )
-                        items(quickExps) { (label, cat, amount) ->
-                            SuggestionChip(
-                                onClick = {
-                                    viewModel.addQuickExpense(cat, label.replace(Regex("[^a-zA-Z0-9\u0900-\u097F]"), "").trim(), amount)
-                                },
-                                label = { Text("$label ₹${amount.toInt()}", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
         // CATEGORY BREAKDOWN CHIPS
         if (categoryExpMap.isNotEmpty()) {
             item {
@@ -3388,7 +3395,7 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text("₹${totalDebt.toInt()} बाकी", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("Hocco, Vadilal, Hajoori डिस्ट्रीब्यूटर को चुकाई जाने वाली बकाया रकम।", color = Color(0xFFFEE2E2), fontSize = 11.sp)
+                    Text("सप्लायर को चुकाई जाने वाली बकाया रकम।", color = Color(0xFFFEE2E2), fontSize = 11.sp)
                 }
             }
         }
@@ -3401,7 +3408,7 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        "अभी तक कोई सप्लायर इनवॉइस नहीं जोड़ा गया है।\nगोदाम स्टॉक स्क्रीन में '+ नया माल (बिल अपलोड)' दबाकर Hocco, Vadilal का बिल जोड़ें।",
+                        "अभी तक कोई सप्लायर इनवॉइस नहीं जोड़ा गया है।\nगोदाम स्टॉक स्क्रीन में '+ नया माल (बिल अपलोड)' दबाकर सप्लायर का बिल जोड़ें।",
                         modifier = Modifier.padding(16.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 12.sp
@@ -3536,7 +3543,7 @@ fun MenuAndCategoryManagementView(viewModel: ShopViewModel) {
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = RoundedCornerShape(12.dp)) {
                     Text(
-                        "No categories created yet. Click '+ New Category' or 'Smart Bulk Import' to add categories like Soda, Ice-cream, Milkshake.",
+                        "No categories created yet. Add a category first, then add its products.",
                         modifier = Modifier.padding(14.dp),
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -3590,7 +3597,7 @@ fun MenuAndCategoryManagementView(viewModel: ShopViewModel) {
                 Text("All Items (${products.size})", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 Button(
                     onClick = {
-                        selectedCatForProduct = categories.firstOrNull()?.name ?: "Soda"
+                        selectedCatForProduct = categories.firstOrNull()?.name.orEmpty()
                         showAddProductDialog = true
                     },
                     shape = RoundedCornerShape(8.dp)
@@ -3664,7 +3671,7 @@ fun MenuAndCategoryManagementView(viewModel: ShopViewModel) {
                 OutlinedTextField(
                     value = catName,
                     onValueChange = { catName = it },
-                    label = { Text("Category Name (e.g. Soda)") },
+                    label = { Text("Category name") },
                     singleLine = true
                 )
             },
@@ -3686,7 +3693,7 @@ fun MenuAndCategoryManagementView(viewModel: ShopViewModel) {
 
     if (showAddProductDialog) {
         var name by remember { mutableStateOf("") }
-        var category by remember { mutableStateOf(selectedCatForProduct ?: (categories.firstOrNull()?.name ?: "Soda")) }
+        var category by remember { mutableStateOf(selectedCatForProduct ?: categories.firstOrNull()?.name.orEmpty()) }
         var brand by remember { mutableStateOf("") }
         var priceText by remember { mutableStateOf("") }
         var boxText by remember { mutableStateOf("0") }
@@ -3697,10 +3704,9 @@ fun MenuAndCategoryManagementView(viewModel: ShopViewModel) {
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Category:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    if (categories.isEmpty()) {
-                        OutlinedTextField(value = category, onValueChange = { category = it }, label = { Text("Category Name") }, singleLine = true)
-                    } else {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (categories.isNotEmpty()) {
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             items(categories) { c ->
                                 FilterChip(
                                     selected = category == c.name,
@@ -3709,10 +3715,17 @@ fun MenuAndCategoryManagementView(viewModel: ShopViewModel) {
                                 )
                             }
                         }
+                        }
+                        OutlinedTextField(
+                            value = category,
+                            onValueChange = { category = it },
+                            label = { Text("Category name") },
+                            singleLine = true
+                        )
                     }
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Item Name (e.g. Jeera Soda)") }, singleLine = true)
+                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Item name") }, singleLine = true)
                     OutlinedTextField(value = priceText, onValueChange = { priceText = it }, label = { Text("Price (₹)") }, singleLine = true)
-                    OutlinedTextField(value = brand, onValueChange = { brand = it }, label = { Text("Brand (e.g. Hajoori, Vadilal)") }, singleLine = true)
+                    OutlinedTextField(value = brand, onValueChange = { brand = it }, label = { Text("Brand (optional)") }, singleLine = true)
                     OutlinedTextField(value = boxText, onValueChange = { boxText = it }, label = { Text("Godown Boxes") }, singleLine = true)
                 }
             },
@@ -3720,7 +3733,10 @@ fun MenuAndCategoryManagementView(viewModel: ShopViewModel) {
                 Button(onClick = {
                     val p = priceText.toDoubleOrNull() ?: 0.0
                     val b = boxText.toIntOrNull() ?: 0
-                    if (name.isNotBlank() && p > 0) {
+                    if (name.isNotBlank() && category.isNotBlank() && p > 0 && b >= 0) {
+                        if (categories.none { it.name.equals(category.trim(), ignoreCase = true) }) {
+                            viewModel.addCategory(category.trim())
+                        }
                         viewModel.addProduct(name, category, brand, p, b)
                         showAddProductDialog = false
                     }

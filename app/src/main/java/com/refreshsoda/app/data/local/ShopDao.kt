@@ -7,6 +7,16 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface ShopDao {
 
+    // User-Defined Custom Brands
+    @Query("SELECT * FROM brands ORDER BY name ASC")
+    fun getAllBrands(): Flow<List<ShopBrand>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBrand(brand: ShopBrand)
+
+    @Delete
+    suspend fun deleteBrand(brand: ShopBrand)
+
     // User Profile
     @Query("SELECT * FROM user_profile WHERE id = 'shop_profile' LIMIT 1")
     fun getUserProfile(): Flow<UserProfile?>
@@ -110,7 +120,7 @@ interface ShopDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAuditLog(log: AuditLog)
 
-    // User Accounts (Multi-User & Staff)
+    // User Accounts
     @Query("SELECT * FROM user_accounts ORDER BY createdAt ASC")
     fun getAllUsers(): Flow<List<UserAccount>>
 
@@ -129,7 +139,7 @@ interface ShopDao {
     @Query("UPDATE user_accounts SET lastLoginAt = :timestamp WHERE id = :userId")
     suspend fun updateLastLogin(userId: String, timestamp: Long)
 
-    // Supplier Purchases & Distributor Bills
+    // Supplier Purchases
     @Query("SELECT * FROM supplier_purchases ORDER BY timestamp DESC")
     fun getAllSupplierPurchases(): Flow<List<SupplierPurchase>>
 

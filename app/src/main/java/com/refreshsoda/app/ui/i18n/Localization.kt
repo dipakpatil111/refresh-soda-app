@@ -533,9 +533,9 @@ object AppStrings {
             AppLanguage.MARATHI to "+ नवीन माल (बिल अपलोड)"
         ),
         "select_brand_label" to mapOf(
-            AppLanguage.HINDI to "ब्रांड चुनें (Brand: Hocco / Vadilal / Hajoori)",
-            AppLanguage.ENGLISH to "Select Brand (Hocco, Vadilal, Hajoori)",
-            AppLanguage.MARATHI to "ब्रँड निवडा (Hocco / Vadilal / Hajoori)"
+            AppLanguage.HINDI to "सप्लायर / ब्रांड",
+            AppLanguage.ENGLISH to "Supplier / Brand",
+            AppLanguage.MARATHI to "पुरवठादार / ब्रँड"
         ),
         "select_category_label" to mapOf(
             AppLanguage.HINDI to "कैटेगरी (Category)",
@@ -551,6 +551,11 @@ object AppStrings {
             AppLanguage.HINDI to "माल आने की तारीख (Date)",
             AppLanguage.ENGLISH to "Inward Date",
             AppLanguage.MARATHI to "माल आल्याची तारीख"
+        ),
+        "payment_mode_label" to mapOf(
+            AppLanguage.HINDI to "भुगतान का तरीका",
+            AppLanguage.ENGLISH to "Payment mode",
+            AppLanguage.MARATHI to "पेमेंट पद्धत"
         ),
         "total_bill_amount" to mapOf(
             AppLanguage.HINDI to "कुल बिल रकम (Total Amount)",
