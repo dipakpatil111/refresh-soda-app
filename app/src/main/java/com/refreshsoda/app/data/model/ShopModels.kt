@@ -78,7 +78,10 @@ data class SaleTransaction(
     val itemsSummary: String,
     val itemsDetails: String = "", // Stored as "Category|Name|Qty|Price;..."
     val timestamp: Long = System.currentTimeMillis()
-)
+) {
+    @androidx.room.Ignore
+    val date: String get() = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
+}
 
 @Entity(tableName = "customers_khata")
 data class CustomerKhata(
@@ -107,7 +110,10 @@ data class Expense(
     val amount: Double,
     val paymentMode: String, // CASH, UPI
     val timestamp: Long = System.currentTimeMillis()
-)
+) {
+    @androidx.room.Ignore
+    val date: String get() = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date(timestamp))
+}
 
 @Entity(tableName = "day_closings")
 data class DayClosing(
