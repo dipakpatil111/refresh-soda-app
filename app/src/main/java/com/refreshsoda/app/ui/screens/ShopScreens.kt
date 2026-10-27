@@ -55,7 +55,7 @@ fun DashboardScreen(viewModel: ShopViewModel) {
                     Text("₹${totalSales.toInt()}", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold)
 
                     Spacer(modifier = Modifier.height(14.dp))
-                    Divider(color = Color(0x33FFFFFF))
+                    HorizontalDivider(color = Color(0x33FFFFFF))
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
