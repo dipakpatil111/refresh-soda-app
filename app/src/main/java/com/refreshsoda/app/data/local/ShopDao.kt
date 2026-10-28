@@ -1,4 +1,4 @@
-﻿package com.refreshsoda.app.data.local
+package com.refreshsoda.app.data.local
 
 import androidx.room.*
 import com.refreshsoda.app.data.model.*
@@ -79,13 +79,6 @@ interface ShopDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertIceCreamVarietyStock(stock: IceCreamVarietyStock)
-
-    @Query("""
-        DELETE FROM ice_cream_variety_stock
-        WHERE LOWER(categoryName) = LOWER(:categoryName)
-          AND LOWER(companyName) = LOWER(:companyName)
-    """)
-    suspend fun deleteIceCreamVarietyStockForCompany(categoryName: String, companyName: String)
 
     @Delete
     suspend fun deleteSubCategory(subCategory: SubCategory)
@@ -182,6 +175,16 @@ interface ShopDao {
 
     @Query("SELECT * FROM user_accounts WHERE LOWER(emailOrPhone) = LOWER(:identifier) LIMIT 1")
     suspend fun getUserByEmailOrPhone(identifier: String): UserAccount?
+
+    @Query("""
+        SELECT * FROM user_accounts
+        WHERE substr(
+            replace(replace(replace(replace(replace(replace(phone, '+', ''), ' ', ''), '-', ''), '(', ''), ')', ''), '.', ''),
+            -10
+        ) = :lastTenDigits
+        LIMIT 1
+    """)
+    suspend fun getUserByPhoneLastTenDigits(lastTenDigits: String): UserAccount?
 
     @Query("SELECT * FROM user_accounts WHERE id = :id LIMIT 1")
     suspend fun getUserById(id: String): UserAccount?

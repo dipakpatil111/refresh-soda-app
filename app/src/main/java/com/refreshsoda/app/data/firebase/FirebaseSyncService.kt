@@ -1,7 +1,8 @@
-﻿package com.refreshsoda.app.data.firebase
+package com.refreshsoda.app.data.firebase
 
 import com.google.firebase.firestore.FirebaseFirestore
 import com.refreshsoda.app.data.model.*
+import com.google.firebase.firestore.DocumentSnapshot
 import kotlinx.coroutines.tasks.await
 
 class FirebaseSyncService {
@@ -63,6 +64,45 @@ class FirebaseSyncService {
         }
     }
 
+    suspend fun findUserById(userId: String): UserAccount? {
+        val document = firestore.collection("users").document(userId).get().await()
+        return document.takeIf { it.exists() }?.let(::userFromDocument)
+    }
+
+    suspend fun findUserByEmailOrPhone(identifier: String): UserAccount? {
+        val users = firestore.collection("users").get().await()
+        val normalizedIdentifier = identifier.trim()
+        val identifierDigits = normalizedIdentifier.filter(Char::isDigit)
+        val isPhoneIdentifier = normalizedIdentifier.all {
+            it.isDigit() || it in "+-(). "
+        }
+        return users.documents
+            .asSequence()
+            .mapNotNull(::userFromDocument)
+            .firstOrNull { user ->
+                user.emailOrPhone.equals(normalizedIdentifier, ignoreCase = true) ||
+                    (isPhoneIdentifier && identifierDigits.length >= 10 &&
+                        user.phone.filter(Char::isDigit).takeLast(10) == identifierDigits.takeLast(10))
+            }
+    }
+
+    private fun userFromDocument(document: DocumentSnapshot): UserAccount? {
+        val data = document.data ?: return null
+        val emailOrPhone = data["emailOrPhone"] as? String ?: return null
+        val password = data["password"] as? String ?: return null
+        return UserAccount(
+            id = data["id"] as? String ?: document.id,
+            name = data["name"] as? String ?: return null,
+            emailOrPhone = emailOrPhone,
+            password = password,
+            role = data["role"] as? String ?: "OWNER",
+            shopName = data["shopName"] as? String ?: "",
+            phone = data["phone"] as? String ?: "",
+            createdAt = (data["createdAt"] as? Number)?.toLong() ?: 0L,
+            lastLoginAt = (data["lastLoginAt"] as? Number)?.toLong() ?: 0L
+        )
+    }
+
     suspend fun syncPurchase(purchase: SupplierPurchase) {
         try {
             firestore.collection("supplier_purchases").document(purchase.id).set(purchase).await()
@@ -75,6 +115,15 @@ class FirebaseSyncService {
     suspend fun restoreAllFromCloud(dao: com.refreshsoda.app.data.local.ShopDao): Int {
         var restoredCount = 0
         try {
+            val userSnap = firestore.collection("users").get().await()
+            for (doc in userSnap.documents) {
+                val user = userFromDocument(doc)
+                if (user != null) {
+                    dao.insertUser(user)
+                    restoredCount++
+                }
+            }
+
             // Restore Products
             val prodSnap = firestore.collection("products").get().await()
             for (doc in prodSnap.documents) {

@@ -1,4 +1,4 @@
-﻿package com.refreshsoda.app.data.local
+package com.refreshsoda.app.data.local
 
 import android.content.Context
 import androidx.room.Database

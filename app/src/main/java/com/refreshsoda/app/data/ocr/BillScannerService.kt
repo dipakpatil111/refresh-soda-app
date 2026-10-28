@@ -1,4 +1,4 @@
-﻿package com.refreshsoda.app.data.ocr
+package com.refreshsoda.app.data.ocr
 
 import android.content.Context
 import android.graphics.BitmapFactory

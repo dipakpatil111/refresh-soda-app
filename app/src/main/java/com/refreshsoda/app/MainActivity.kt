@@ -16,11 +16,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import com.refreshsoda.app.ui.screens.*
 import com.refreshsoda.app.ui.theme.AppThemeMode
 import com.refreshsoda.app.ui.theme.RefreshSodaTheme
@@ -30,7 +25,6 @@ import com.refreshsoda.app.ui.viewmodel.ShopViewModelFactory
 enum class Screen(val titleKey: String, val icon: ImageVector) {
     Dashboard("tab_dashboard", Icons.Default.Dashboard),
     POS("tab_pos", Icons.Default.PointOfSale),
-    Analytics("tab_analytics", Icons.Default.InsertChart),
     Inventory("tab_stock", Icons.Default.Inventory2),
     Khata("tab_khata", Icons.Default.MenuBook),
     Hisaab("tab_hisaab", Icons.Default.AccountBalanceWallet),
@@ -74,171 +68,97 @@ class MainActivity : ComponentActivity() {
                     Scaffold(
                         modifier = Modifier.fillMaxSize(),
                         topBar = {
-                            if (currentScreen != Screen.Dashboard && currentScreen != Screen.POS && currentScreen != Screen.Inventory) {
-                                @OptIn(ExperimentalMaterial3Api::class)
-                                TopAppBar(
-                                    title = {
+                            @OptIn(ExperimentalMaterial3Api::class)
+                            TopAppBar(
+                                title = {
+                                    Column {
                                         Text(
-                                            when (currentScreen) {
-                                                Screen.Analytics -> "Analytics & Graphs"
-                                                Screen.Khata -> "Udhaar / Khata"
-                                                Screen.Hisaab -> "Daily Hisaab"
-                                                Screen.Settings -> "Settings & Backup"
-                                                else -> viewModel.getString(currentScreen.titleKey)
+                                            userProfile.shopName.ifBlank {
+                                                currentUser?.shopName?.takeIf { it.isNotBlank() } ?: "Refresh Soda & Ice-cream"
                                             },
                                             fontSize = 17.sp,
-                                            fontWeight = FontWeight.Bold
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1
                                         )
-                                    },
-                                    navigationIcon = {
-                                        IconButton(onClick = { currentScreen = Screen.Dashboard }) {
-                                            Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                                        }
-                                    },
-                                    actions = {
-                                        IconButton(onClick = {
-                                            val nextMode = when (themeMode) {
-                                                AppThemeMode.LIGHT -> AppThemeMode.DARK
-                                                AppThemeMode.DARK -> AppThemeMode.SYSTEM
-                                                else -> AppThemeMode.LIGHT
-                                            }
-                                            viewModel.setThemeMode(nextMode)
-                                        }) {
-                                            Icon(
-                                                imageVector = when (themeMode) {
-                                                    AppThemeMode.LIGHT -> Icons.Default.LightMode
-                                                    AppThemeMode.DARK -> Icons.Default.DarkMode
-                                                    else -> Icons.Default.BrightnessAuto
-                                                },
-                                                contentDescription = "Theme"
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Text(
+                                                text = if (currentUser?.role == "OWNER") "👑 ${currentUser?.name}" else "👤 ${currentUser?.name} (Staff)",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = if (currentUser?.role == "OWNER") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
                                             )
                                         }
-                                        IconButton(onClick = { showLogoutDialog = true }) {
-                                            Icon(Icons.Default.Logout, contentDescription = "Logout", tint = MaterialTheme.colorScheme.error)
+                                    }
+                                },
+                                actions = {
+                                    // Quick Theme Toggle Icon
+                                    IconButton(onClick = {
+                                        val nextMode = when (themeMode) {
+                                            AppThemeMode.LIGHT -> AppThemeMode.DARK
+                                            AppThemeMode.DARK -> AppThemeMode.SYSTEM
+                                            else -> AppThemeMode.LIGHT
                                         }
-                                    },
-                                    colors = TopAppBarDefaults.topAppBarColors(
-                                        containerColor = MaterialTheme.colorScheme.surface,
-                                        titleContentColor = MaterialTheme.colorScheme.onSurface
-                                    )
+                                        viewModel.setThemeMode(nextMode)
+                                    }) {
+                                        Icon(
+                                            imageVector = when (themeMode) {
+                                                AppThemeMode.LIGHT -> Icons.Default.LightMode
+                                                AppThemeMode.DARK -> Icons.Default.DarkMode
+                                                else -> Icons.Default.BrightnessAuto
+                                            },
+                                            contentDescription = "Theme Toggle"
+                                        )
+                                    }
+
+                                    // Settings Gear Icon
+                                    IconButton(onClick = { currentScreen = Screen.Settings }) {
+                                        Icon(
+                                            Icons.Default.Settings,
+                                            contentDescription = "Settings",
+                                            tint = if (currentScreen == Screen.Settings) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+
+                                    // Logout / Switch User Icon
+                                    IconButton(onClick = { showLogoutDialog = true }) {
+                                        Icon(
+                                            Icons.Default.Logout,
+                                            contentDescription = "Logout",
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                },
+                                colors = TopAppBarDefaults.topAppBarColors(
+                                    containerColor = MaterialTheme.colorScheme.surface,
+                                    titleContentColor = MaterialTheme.colorScheme.onSurface
                                 )
-                            }
+                            )
                         },
                         bottomBar = {
-                            Surface(
-                                color = MaterialTheme.colorScheme.surface,
-                                tonalElevation = 6.dp,
-                                shadowElevation = 8.dp
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .navigationBarsPadding()
-                                        .height(60.dp)
-                                        .padding(horizontal = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceAround
-                                ) {
-                                    // 1. Home
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier
-                                            .clickable { currentScreen = Screen.Dashboard }
-                                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Home,
-                                            contentDescription = "Home",
-                                            tint = if (currentScreen == Screen.Dashboard) Color(0xFF366A55) else Color(0xFF94A3B8),
-                                            modifier = Modifier.size(22.dp)
+                            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                                val bottomTabs = listOf(
+                                    Screen.Dashboard,
+                                    Screen.POS,
+                                    Screen.Inventory,
+                                    Screen.Khata,
+                                    Screen.Hisaab
+                                )
+                                bottomTabs.forEach { screen ->
+                                    val labelText = viewModel.getString(screen.titleKey)
+                                    NavigationBarItem(
+                                        selected = currentScreen == screen,
+                                        onClick = { currentScreen = screen },
+                                        icon = { Icon(screen.icon, contentDescription = labelText) },
+                                        label = { Text(labelText, fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                                        colors = NavigationBarItemDefaults.colors(
+                                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                                            indicatorColor = MaterialTheme.colorScheme.primaryContainer
                                         )
-                                        Text(
-                                            "Home",
-                                            fontSize = 10.sp,
-                                            fontWeight = if (currentScreen == Screen.Dashboard) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (currentScreen == Screen.Dashboard) Color(0xFF366A55) else Color(0xFF94A3B8)
-                                        )
-                                    }
-
-                                    // 2. Stock
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier
-                                            .clickable { currentScreen = Screen.Inventory }
-                                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Inventory2,
-                                            contentDescription = "Stock",
-                                            tint = if (currentScreen == Screen.Inventory) Color(0xFF366A55) else Color(0xFF94A3B8),
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                        Text(
-                                            "Stock",
-                                            fontSize = 10.sp,
-                                            fontWeight = if (currentScreen == Screen.Inventory) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (currentScreen == Screen.Inventory) Color(0xFF366A55) else Color(0xFF94A3B8)
-                                        )
-                                    }
-
-                                    // 3. Center FAB (+) - POS Sale
-                                    Box(
-                                        modifier = Modifier
-                                            .size(48.dp)
-                                            .clip(CircleShape)
-                                            .background(if (currentScreen == Screen.POS) Color(0xFF366A55) else Color(0xFFF5C7A9))
-                                            .clickable { currentScreen = Screen.POS },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Add,
-                                            contentDescription = "New Sale",
-                                            tint = if (currentScreen == Screen.POS) Color.White else Color(0xFF1E293B),
-                                            modifier = Modifier.size(26.dp)
-                                        )
-                                    }
-
-                                    // 4. Udhaar
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier
-                                            .clickable { currentScreen = Screen.Khata }
-                                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.MenuBook,
-                                            contentDescription = "Udhaar",
-                                            tint = if (currentScreen == Screen.Khata) Color(0xFF366A55) else Color(0xFF94A3B8),
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                        Text(
-                                            "Udhaar",
-                                            fontSize = 10.sp,
-                                            fontWeight = if (currentScreen == Screen.Khata) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (currentScreen == Screen.Khata) Color(0xFF366A55) else Color(0xFF94A3B8)
-                                        )
-                                    }
-
-                                    // 5. Hisaab
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier
-                                            .clickable { currentScreen = Screen.Hisaab }
-                                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.AccountBalanceWallet,
-                                            contentDescription = "Hisaab",
-                                            tint = if (currentScreen == Screen.Hisaab) Color(0xFF366A55) else Color(0xFF94A3B8),
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                        Text(
-                                            "Hisaab",
-                                            fontSize = 10.sp,
-                                            fontWeight = if (currentScreen == Screen.Hisaab) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (currentScreen == Screen.Hisaab) Color(0xFF366A55) else Color(0xFF94A3B8)
-                                        )
-                                    }
+                                    )
                                 }
                             }
                         }
@@ -250,19 +170,9 @@ class MainActivity : ComponentActivity() {
                             when (currentScreen) {
                                 Screen.Dashboard -> DashboardScreen(
                                     viewModel = viewModel,
-                                    onNavigateToPOS = { currentScreen = Screen.POS },
-                                    onNavigateToAnalytics = { currentScreen = Screen.Analytics },
-                                    onNavigateToInventory = { currentScreen = Screen.Inventory },
-                                    onNavigateToKhata = { currentScreen = Screen.Khata },
-                                    onNavigateToHisaab = { currentScreen = Screen.Hisaab },
-                                    onOpenSettings = { currentScreen = Screen.Settings },
-                                    onLogout = { showLogoutDialog = true }
+                                    onNavigateToPOS = { currentScreen = Screen.POS }
                                 )
-                                Screen.POS -> POSScreen(
-                                    viewModel = viewModel,
-                                    onNavigateBack = { currentScreen = Screen.Dashboard }
-                                )
-                                Screen.Analytics -> AnalyticsScreen(viewModel = viewModel)
+                                Screen.POS -> POSScreen(viewModel = viewModel)
                                 Screen.Inventory -> InventoryScreen(viewModel = viewModel)
                                 Screen.Khata -> KhataScreen(viewModel = viewModel)
                                 Screen.Hisaab -> HisaabScreen(
@@ -303,14 +213,14 @@ class MainActivity : ComponentActivity() {
                     if (showExitDialog) {
                         AlertDialog(
                             onDismissRequest = { showExitDialog = false },
-                            title = { Text("Exit Shop App?", fontWeight = FontWeight.Bold) },
-                            text = { Text("Do you really want to close the app?") },
+                            title = { Text("दुकान ऐप बंद करें?", fontWeight = FontWeight.Bold) },
+                            text = { Text("क्या आप सचमुच ऐप से बाहर जाना चाहते हैं?") },
                             confirmButton = {
                                 Button(
                                     onClick = { finish() },
                                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                                 ) {
-                                    Text("Yes, Exit")
+                                    Text("हां, बंद करें (Exit)")
                                 }
                             },
                             dismissButton = {

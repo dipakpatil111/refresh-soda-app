@@ -30,11 +30,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.ui.text.input.KeyboardType
 import com.refreshsoda.app.data.model.CustomerKhata
 import com.refreshsoda.app.data.model.DraftProductItem
 import com.refreshsoda.app.data.model.Expense
@@ -69,49 +64,6 @@ fun sendWhatsAppMessage(context: Context, phone: String?, message: String) {
     } catch (e: Exception) {
         Toast.makeText(context, "WhatsApp error: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
     }
-}
-
-@Composable
-fun AppTextField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    modifier: Modifier = Modifier,
-    label: String? = null,
-    placeholder: String? = null,
-    leadingIcon: @Composable (() -> Unit)? = null,
-    trailingIcon: @Composable (() -> Unit)? = null,
-    singleLine: Boolean = true,
-    maxLines: Int = 1,
-    enabled: Boolean = true,
-    readOnly: Boolean = false,
-    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
-    keyboardActions: KeyboardActions = KeyboardActions.Default
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = modifier.fillMaxWidth(),
-        enabled = enabled,
-        readOnly = readOnly,
-        label = label?.let { { Text(it, fontSize = 12.sp) } },
-        placeholder = placeholder?.let { { Text(it, fontSize = 13.sp, color = Color(0xFF94A3B8)) } },
-        leadingIcon = leadingIcon,
-        trailingIcon = trailingIcon,
-        singleLine = singleLine,
-        maxLines = maxLines,
-        shape = RoundedCornerShape(12.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = Color(0xFF366A55),
-            unfocusedBorderColor = Color(0xFFE2E8F0),
-            focusedContainerColor = Color(0xFFF8FAFC),
-            unfocusedContainerColor = Color(0xFFF8FAFC),
-            focusedLabelColor = Color(0xFF366A55),
-            unfocusedLabelColor = Color(0xFF64748B),
-            cursorColor = Color(0xFF366A55)
-        ),
-        keyboardOptions = keyboardOptions,
-        keyboardActions = keyboardActions
-    )
 }
 
 // ==============================================================================
@@ -448,7 +400,7 @@ fun SettingsScreen(viewModel: ShopViewModel) {
         // 4. CLOUD BACKUP & RESTORE SECTION
         item {
             Text(
-                "☁️ Cloud Backup & Data Recovery",
+                "☁️ Cloud Backup & Data Recovery (क्लाउड बैकअप)",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
@@ -463,7 +415,7 @@ fun SettingsScreen(viewModel: ShopViewModel) {
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Secure your shop data or restore on a new device:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("दुकान का डेटा सुरक्षित रखें या नए फोन में तुरंत वापस लाएं:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
@@ -479,7 +431,7 @@ fun SettingsScreen(viewModel: ShopViewModel) {
                         ) {
                             Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Backup Data", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("क्लाउड बैकअप", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
 
                         FilledTonalButton(
@@ -494,7 +446,7 @@ fun SettingsScreen(viewModel: ShopViewModel) {
                         ) {
                             Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Restore Data", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("डेटा वापस लाएं", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -649,13 +601,7 @@ fun SettingsScreen(viewModel: ShopViewModel) {
 @Composable
 fun DashboardScreen(
     viewModel: ShopViewModel,
-    onNavigateToPOS: () -> Unit = {},
-    onNavigateToAnalytics: () -> Unit = {},
-    onNavigateToInventory: () -> Unit = {},
-    onNavigateToKhata: () -> Unit = {},
-    onNavigateToHisaab: () -> Unit = {},
-    onOpenSettings: () -> Unit = {},
-    onLogout: () -> Unit = {}
+    onNavigateToPOS: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val totalSales by viewModel.totalSalesAmount.collectAsState()
@@ -667,498 +613,333 @@ fun DashboardScreen(
     val categorySalesMap by viewModel.categorySales.collectAsState()
     val topItem by viewModel.topItem.collectAsState()
     val categories by viewModel.categories.collectAsState()
-    val products by viewModel.products.collectAsState()
     val subCategories by viewModel.subCategories.collectAsState()
     val varietyStocks by viewModel.iceCreamVarietyStock.collectAsState()
     val sales by viewModel.sales.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
-    val userProfile by viewModel.userProfile.collectAsState()
     val topSodaIce by viewModel.topSodaAndIceCream.collectAsState()
 
-    var showAddStockDialog by remember { mutableStateOf(false) }
     var showInwardDialog by remember { mutableStateOf(false) }
-    var showOpenBoxDialog by remember { mutableStateOf(false) }
-    var selectedCompanyForStock by remember { mutableStateOf<SubCategory?>(null) }
-    var stockVarietyName by remember { mutableStateOf("") }
-    var stockCountText by remember { mutableStateOf("1") }
+    var selectedSaleForReceipt by remember { mutableStateOf<SaleTransaction?>(null) }
 
     val boxTrackedSubCategories = subCategories.filter { subCategory ->
         categories.any { it.trackBoxes && it.name.equals(subCategory.categoryName, ignoreCase = true) }
     }
-    val trackedVarietyStocks = varietyStocks.filter { stock ->
-        categories.any { it.trackBoxes && it.name.equals(stock.categoryName, ignoreCase = true) }
+    val lowStockItems = varietyStocks.filter { stock ->
+        stock.varietyName != "Opening stock (unassigned)" &&
+            categories.any { it.trackBoxes && it.name.equals(stock.categoryName, ignoreCase = true) } &&
+            stock.sealedBoxes <= stock.lowStockLimit
     }
-    val boxTrackedVarietyStocks = trackedVarietyStocks.filter {
-        it.varietyName != "Opening stock (unassigned)"
-    }
-    val openableVarietyStocks = trackedVarietyStocks.filter { it.sealedBoxes > 0 }
-    val lowStockItems = boxTrackedVarietyStocks.filter { stock ->
-        stock.sealedBoxes <= stock.lowStockLimit
-    }
-
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // 1. HEADER (Namaste, Owner / Shop Name / Avatar DP)
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 2.dp, bottom = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    val ownerName = currentUser?.name?.takeIf { it.isNotBlank() } ?: "Dipak"
-                    Text(
-                        text = "Namaste, $ownerName",
-                        fontSize = 13.sp,
-                        color = Color(0xFF64748B),
-                        fontWeight = FontWeight.Medium
-                    )
-                    val shopTitle = userProfile.shopName.ifBlank {
-                        currentUser?.shopName?.takeIf { it.isNotBlank() } ?: "Refresh Soda"
-                    }
-                    Text(
-                        text = shopTitle,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFF1E293B)
-                    )
-                }
-
-                // Avatar DP Circle
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFF5C7A9))
-                        .clickable { onOpenSettings() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    val initials = currentUser?.name?.split(" ")?.mapNotNull { it.firstOrNull()?.toString() }?.take(2)?.joinToString("")?.uppercase() ?: "DP"
-                    Text(
-                        text = initials.ifBlank { "DP" },
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1E293B)
-                    )
-                }
-            }
-        }
-
-        // 2. HERO CARD (Forest Green #366A55 - Aaj ki bikri, Cash/UPI/Udhaar pills, Kharcha & Munafa)
+        // 1. MASTER FINANCIAL HERO CARD (SALES, EXPENSES & NET PROFIT)
         item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF366A55)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
                 shape = RoundedCornerShape(22.dp),
                 modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
-                    Text(
-                        text = "Aaj ki bikri",
-                        color = Color.White.copy(alpha = 0.85f),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "₹" + totalSales.toInt(),
-                        color = Color.White,
-                        fontSize = 36.sp,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // 3 Pills: Cash, UPI, Udhaar
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = Color(0xFF2A5443),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = "Cash ₹" + cashSales.toInt(),
-                                color = Color.White,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(vertical = 7.dp, horizontal = 2.dp)
-                            )
-                        }
-                        Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = Color(0xFF2A5443),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = "UPI ₹" + upiSales.toInt(),
-                                color = Color.White,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(vertical = 7.dp, horizontal = 2.dp)
-                            )
-                        }
-                        Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = Color(0xFF2A5443),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = "Udhaar ₹" + udharSales.toInt(),
-                                color = Color.White,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(vertical = 7.dp, horizontal = 2.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Bottom Row: Kharcha & Munafa
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Kharcha ₹" + totalExpenses.toInt(),
-                            color = Color.White.copy(alpha = 0.9f),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "Munafa ₹" + netProfit.toInt(),
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-        }
-
-        // 3. TOP SELLERS (2 Side-by-Side Cards: AAJ KA TOP SODA & AAJ KA TOP ICE-CREAM)
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Top Soda Card
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Text(
-                            text = "AAJ KA TOP SODA",
-                            fontSize = 10.sp,
+                            viewModel.getString("today_total_sales").uppercase(),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF64748B),
-                            letterSpacing = 0.5.sp
+                            letterSpacing = 1.sp
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        val sodaParts = topSodaIce.first.split("(")
-                        val sodaName = sodaParts.firstOrNull()?.trim() ?: "Jeera Soda"
-                        val sodaCount = sodaParts.getOrNull(1)?.replace(")", "")?.trim() ?: "0 glass"
-                        Text(
-                            text = if (sodaName.isBlank() || sodaName == "—") "Jeera Soda" else sodaName,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1E293B),
-                            maxLines = 1
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = if (sodaCount.isBlank() || sodaCount == "0 glass") "42 bike" else "$sodaCount bike",
-                            fontSize = 12.sp,
-                            color = Color(0xFF64748B)
-                        )
+                        Text(viewModel.todayDateString, color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
                     }
-                }
 
-                // Top Ice-cream Card
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        Text(
-                            text = "AAJ KA TOP ICE-CREAM",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF64748B),
-                            letterSpacing = 0.5.sp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        val iceParts = topSodaIce.second.split("(")
-                        val iceName = iceParts.firstOrNull()?.trim() ?: "Hocco"
-                        val iceCount = iceParts.getOrNull(1)?.replace(")", "")?.trim() ?: "0 pcs"
-                        Text(
-                            text = if (iceName.isBlank() || iceName == "—") "Hocco" else iceName,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1E293B),
-                            maxLines = 1
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = if (iceCount.isBlank() || iceCount == "0 pcs") "18 bike" else "$iceCount bike",
-                            fontSize = 12.sp,
-                            color = Color(0xFF64748B)
-                        )
-                    }
-                }
-            }
-        }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("₹${totalSales.toInt()}", color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.ExtraBold)
 
-        // 4. STOCK ALERT CARD (Soft Peach/Pink #FEECE8 - Stock kam hai (ice-cream))
-        item {
-            val lowStockDesc = if (lowStockItems.isNotEmpty()) {
-                lowStockItems.joinToString(" · ") { stock -> stock.companyName + " " + stock.sealedBoxes + " box" }
-            } else {
-                "Hocco 3 box · Vadilal 2 box"
-            }
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFEECE8)),
-                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, Color(0xFFFCDAD4)),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onNavigateToInventory() }
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text(
-                        text = "Stock kam hai (ice-cream)",
-                        color = Color(0xFFC2410C),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(3.dp))
-                    Text(
-                        text = lowStockDesc,
-                        color = Color(0xFF7C2D12),
-                        fontSize = 12.sp
-                    )
-                }
-            }
-        }
+                    Spacer(modifier = Modifier.height(8.dp))
 
-        // 5. QUICK ACTIONS (3 Buttons: Maal aaya, Kharcha, Din band)
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // 1. Maal aaya
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color.White,
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                    shadowElevation = 1.dp,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { showInwardDialog = true }
-                ) {
-                    Column(
-                        modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                    // Net Profit & Expense Pill Banner
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.White.copy(alpha = 0.15f),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("📦", fontSize = 20.sp)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text("Maal aaya", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
-                    }
-                }
-
-                // 2. Kharcha
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color.White,
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                    shadowElevation = 1.dp,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { onNavigateToHisaab() }
-                ) {
-                    Column(
-                        modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text("👛", fontSize = 20.sp)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text("Kharcha", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
-                    }
-                }
-
-                // 3. Din band
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color.White,
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                    shadowElevation = 1.dp,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { onNavigateToHisaab() }
-                ) {
-                    Column(
-                        modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text("📋", fontSize = 20.sp)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text("Din band", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
-                    }
-                }
-            }
-        }
-
-        // 6. BUSINESS ANALYTICS & CHARTS CARD
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onNavigateToAnalytics() }
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xFF366A55).copy(alpha = 0.12f)),
-                            contentAlignment = Alignment.Center
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.InsertChart,
-                                contentDescription = null,
-                                tint = Color(0xFF366A55),
-                                modifier = Modifier.size(20.dp)
-                            )
+                            Column {
+                                Text("दुकान खर्चा (Expenses)", color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp)
+                                Text("₹${totalExpenses.toInt()}", color = Color(0xFFFCA5A5), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            }
+
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(viewModel.getString("net_profit"), color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp)
+                                if (currentUser?.role == "STAFF") {
+                                    Text("₹ ***", color = Color.White.copy(alpha = 0.7f), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                } else {
+                                    Text("₹${netProfit.toInt()}", color = if (netProfit >= 0) Color(0xFF86EFAC) else Color(0xFFFCA5A5), fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.2f))
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column {
+                            Text(viewModel.getString("cash_galla"), color = MaterialTheme.colorScheme.primaryContainer, fontSize = 11.sp)
+                            Text("₹${cashSales.toInt()}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                         }
                         Column {
-                            Text(
-                                text = "Analytics & Profit Charts",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF1E293B)
-                            )
-                            Text(
-                                text = "Category Sales, Trends & Margin",
-                                fontSize = 11.sp,
-                                color = Color(0xFF64748B)
-                            )
+                            Text(viewModel.getString("upi_paytm"), color = MaterialTheme.colorScheme.primaryContainer, fontSize = 11.sp)
+                            Text("₹${upiSales.toInt()}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        }
+                        Column {
+                            Text(viewModel.getString("udhar_khata"), color = MaterialTheme.colorScheme.primaryContainer, fontSize = 11.sp)
+                            Text("₹${udharSales.toInt()}", color = Color(0xFFFDE68A), fontWeight = FontWeight.Bold, fontSize = 15.sp)
                         }
                     }
-                    Icon(
-                        imageVector = Icons.Default.ArrowForwardIos,
-                        contentDescription = "Open",
-                        tint = Color(0xFF366A55),
-                        modifier = Modifier.size(14.dp)
-                    )
                 }
             }
         }
 
-        // 7. RECENT SALES LOG
+        // QUICK ACTION BUTTONS
         item {
-            Text(
-                text = "Recent Sales",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF1E293B)
-            )
-        }
-        if (sales.isEmpty()) {
-            item {
-                Text(
-                    text = "No sales recorded yet today.",
-                    color = Color(0xFF64748B),
-                    fontSize = 13.sp
-                )
-            }
-        } else {
-            items(sales.take(6)) { sale ->
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onNavigateToPOS,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
                     shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.AddShoppingCart, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(viewModel.getString("quick_new_sale"), fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                }
+
+                Button(
+                    onClick = { showInwardDialog = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.PostAdd, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(viewModel.getString("inward_stock_btn"), fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                }
+            }
+        }
+
+        // QUICK 1-TAP EXPENSES ROW
+        // LOW STOCK RED WARNING BADGE
+        if (lowStockItems.isNotEmpty()) {
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFEE2E2)),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(viewModel.getString("low_stock_warning"), color = Color(0xFFDC2626), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        lowStockItems.take(6).forEach { prod ->
+                            Text(
+                                "• ${prod.companyName} ${prod.varietyName}: only ${prod.sealedBoxes} box left (limit ${prod.lowStockLimit}).",
+                                color = if (prod.sealedBoxes == 0) Color(0xFF991B1B) else Color(0xFF92400E),
+                                fontSize = 12.sp,
+                                fontWeight = if (prod.sealedBoxes == 0) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // CATEGORY-WISE SALES BREAKDOWN
+        if (categorySalesMap.isNotEmpty()) {
+            item {
+                Text(viewModel.getString("category_sales"), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            }
+            item {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(categorySalesMap.entries.toList()) { entry ->
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.width(115.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text(entry.key, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("₹${entry.value.toInt()}", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // TODAY'S TOP ITEM CARD
+        if (topItem.pieces > 0) {
+            item {
+                Text(viewModel.getString("top_items"), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            }
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
+                        modifier = Modifier.padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("⭐ Top Performing Item", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(topItem.name, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Text("${topItem.pieces} Pcs • ₹${topItem.revenue.toInt()}", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+        }
+
+        // TODAY'S "KYA ZYADA BIKA" (TOP SODA & TOP ICE-CREAM)
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("📊 आज क्या सबसे ज़्यादा बिका (Top Sellers):", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text("🥤 Top Soda", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(topSodaIce.first, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text("🍦 Top Ice-cream", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(topSodaIce.second, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // GODOWN BOX STATUS
+        if (boxTrackedSubCategories.isNotEmpty()) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(viewModel.getString("godown_box_status"), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    val totalBoxes = boxTrackedSubCategories.sumOf { it.sealedBoxes }
+                    Text("Total: $totalBoxes Box", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+            item {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(boxTrackedSubCategories) { subCategory ->
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.width(115.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text(subCategory.name, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    "${subCategory.sealedBoxes} Box",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (subCategory.sealedBoxes <= subCategory.lowStockLimit) Color(0xFFDC2626) else MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // RECENT SALES LOG WITH 1-CLICK DIGITAL RECEIPT SHARING
+        item {
+            Text(viewModel.getString("recent_sales"), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        }
+        if (sales.isEmpty()) {
+            item {
+                Text("No sales yet today.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+            }
+        } else {
+            items(sales.take(8)) { sale ->
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = sale.itemsSummary,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF1E293B),
-                                maxLines = 1
-                            )
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                            Text(sale.itemsSummary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                                 val modeColor = when (sale.paymentMode) {
-                                    "CASH" -> Color(0xFF366A55)
+                                    "CASH" -> Color(0xFF16A34A)
                                     "UPI" -> Color(0xFF0284C7)
                                     else -> Color(0xFFD97706)
                                 }
-                                Text(
-                                    text = sale.paymentMode,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = modeColor
-                                )
-                                if (!sale.customerName.isNullOrBlank()) {
-                                    Text(
-                                        text = "• " + sale.customerName,
-                                        fontSize = 10.sp,
-                                        color = Color(0xFF64748B)
-                                    )
+                                Text(sale.paymentMode, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = modeColor)
+                                if (sale.customerName != null) {
+                                    Text("• ${sale.customerName}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(
-                                text = "₹" + sale.totalAmount.toInt(),
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF366A55)
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("₹${sale.totalAmount.toInt()}", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
 
                             // Digital WhatsApp Receipt Button
                             IconButton(
@@ -1168,12 +949,7 @@ fun DashboardScreen(
                                 },
                                 modifier = Modifier.size(28.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.ReceiptLong,
-                                    contentDescription = "Share",
-                                    tint = Color(0xFF366A55),
-                                    modifier = Modifier.size(18.dp)
-                                )
+                                Icon(Icons.Default.ReceiptLong, contentDescription = "Share Receipt", tint = Color(0xFF16A34A), modifier = Modifier.size(18.dp))
                             }
 
                             // Delete Sale Button
@@ -1181,12 +957,7 @@ fun DashboardScreen(
                                 onClick = { viewModel.deleteSale(sale) },
                                 modifier = Modifier.size(28.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.DeleteOutline,
-                                    contentDescription = "Delete",
-                                    tint = Color(0xFFDC2626),
-                                    modifier = Modifier.size(18.dp)
-                                )
+                                Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = Color(0xFFDC2626), modifier = Modifier.size(18.dp))
                             }
                         }
                     }
@@ -1195,133 +966,16 @@ fun DashboardScreen(
         }
     }
 
-    if (showAddStockDialog && boxTrackedSubCategories.isNotEmpty()) {
-        AlertDialog(
-            onDismissRequest = { showAddStockDialog = false },
-            title = { Text("Add Box Stock", fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Select Company:", fontSize = 12.sp, color = Color(0xFF64748B))
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(boxTrackedSubCategories) { prod ->
-                            FilterChip(
-                                selected = selectedCompanyForStock?.id == prod.id,
-                                onClick = { selectedCompanyForStock = prod },
-                                label = { Text(prod.name + " (" + prod.categoryName + ")", fontSize = 11.sp) }
-                            )
-                        }
-                    }
-                    AppTextField(
-                        value = stockVarietyName,
-                        onValueChange = { stockVarietyName = it },
-                        label = "Product / variety name"
-                    )
-                    AppTextField(
-                        value = stockCountText,
-                        onValueChange = { stockCountText = it },
-                        label = "Boxes"
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val count = stockCountText.toIntOrNull() ?: 0
-                        val company = selectedCompanyForStock
-                        if (count > 0 && company != null && stockVarietyName.isNotBlank()) {
-                            viewModel.addIceCreamVarietyBoxes(
-                                company.categoryName,
-                                company.name,
-                                stockVarietyName,
-                                count
-                            )
-                            showAddStockDialog = false
-                            selectedCompanyForStock = null
-                            stockVarietyName = ""
-                            stockCountText = "1"
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF366A55))
-                ) {
-                    Text("Add")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddStockDialog = false }) { Text("Cancel") }
-            }
-        )
-    }
-
-    if (showOpenBoxDialog) {
-        val availableProducts = openableVarietyStocks
-        var selectedProduct by remember { mutableStateOf(availableProducts.firstOrNull()) }
-
-        AlertDialog(
-            onDismissRequest = { showOpenBoxDialog = false },
-            title = { Text("Open Box at Counter", fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Select Box to open at Counter:", fontSize = 12.sp, color = Color(0xFF64748B))
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(availableProducts) { prod ->
-                            FilterChip(
-                                selected = selectedProduct == prod,
-                                onClick = { selectedProduct = prod },
-                                label = { Text(prod.companyName + " • " + prod.varietyName + " (" + prod.sealedBoxes + " Left)", fontSize = 11.sp) }
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (selectedProduct != null) {
-                            viewModel.openIceCreamVarietyBox(selectedProduct!!)
-                            showOpenBoxDialog = false
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF366A55))
-                ) {
-                    Text("-1 Box")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showOpenBoxDialog = false }) { Text("Cancel") }
-            }
-        )
-    }
-
     if (showInwardDialog) {
         InwardBillDialog(viewModel = viewModel, onDismiss = { showInwardDialog = false })
     }
 }
 
-
 // ==============================================================================
 // 3. POS SALES ENTRY SCREEN
 // ==============================================================================
-fun getCategoryFoodIcon(category: String, name: String): String {
-    val lower = "$category $name".lowercase(java.util.Locale.getDefault())
-    return when {
-        lower.contains("ice") || lower.contains("cream") || lower.contains("kulfi") || lower.contains("cone") -> "🍨"
-        lower.contains("soda") || lower.contains("cola") || lower.contains("jeera") || lower.contains("nimbu") -> "🥤"
-        lower.contains("shake") || lower.contains("smoothie") || lower.contains("milk") -> "🧋"
-        lower.contains("snack") || lower.contains("chips") || lower.contains("wafer") || lower.contains("tasty") -> "🍿"
-        lower.contains("burger") || lower.contains("sandwich") -> "🍔"
-        lower.contains("fruit") || lower.contains("juice") -> "🍹"
-        lower.contains("fish") || lower.contains("salmon") || lower.contains("nonveg") -> "🍲"
-        lower.contains("tea") || lower.contains("chai") || lower.contains("coffee") -> "☕"
-        else -> "🍽️"
-    }
-}
-
 @Composable
-@OptIn(ExperimentalMaterial3Api::class)
-fun POSScreen(
-    viewModel: ShopViewModel,
-    onNavigateBack: () -> Unit = {}
-) {
+fun POSScreen(viewModel: ShopViewModel) {
     val context = LocalContext.current
     val categories by viewModel.categories.collectAsState()
     val products by viewModel.products.collectAsState()
@@ -1333,17 +987,16 @@ fun POSScreen(
     val lastSaleForUndo by viewModel.lastSaleForUndo.collectAsState()
 
     var undoSecondsLeft by remember { mutableStateOf(0) }
-    LaunchedEffect(lastSaleForUndo) {
-        if (lastSaleForUndo != null) {
-            undoSecondsLeft = 5
-            while (undoSecondsLeft > 0) {
-                kotlinx.coroutines.delay(1000)
-                undoSecondsLeft--
-            }
+    LaunchedEffect(lastSaleForUndo?.id) {
+        val sale = lastSaleForUndo ?: return@LaunchedEffect
+        while (true) {
+            val remainingMillis = (sale.timestamp + 5_000L - System.currentTimeMillis()).coerceAtLeast(0L)
+            undoSecondsLeft = ((remainingMillis + 999L) / 1_000L).toInt()
+            if (remainingMillis == 0L) break
+            kotlinx.coroutines.delay(minOf(remainingMillis, 1_000L))
         }
     }
 
-    var searchQuery by remember { mutableStateOf("") }
     var selectedCategoryName by remember { mutableStateOf("All") }
     var selectedCompany by remember { mutableStateOf<SubCategory?>(null) }
     var companyAmountText by remember { mutableStateOf("") }
@@ -1351,10 +1004,6 @@ fun POSScreen(
     var showAddProductDialog by remember { mutableStateOf(false) }
     var showSmartImportDialog by remember { mutableStateOf(false) }
     var showUdharDialog by remember { mutableStateOf(false) }
-    var showConfirmSaleDialog by remember { mutableStateOf(false) }
-    var showDiscountDialog by remember { mutableStateOf(false) }
-    var discountInputText by remember { mutableStateOf("") }
-    var confirmPaymentMode by remember { mutableStateOf("CASH") }
     var udharCustomerName by remember { mutableStateOf("") }
     var showEditItemDialog by remember { mutableStateOf<Int?>(null) }
 
@@ -1369,211 +1018,270 @@ fun POSScreen(
     val selectedCategoryIsIceCream = categories.firstOrNull {
         it.name.equals(selectedCategoryName, ignoreCase = true)
     }?.trackBoxes == true
-    val selectedItemFavorites = remember(itemModeFavorites, searchQuery, selectedCategoryName) {
-        itemModeFavorites.filter { product ->
-            val matchesCat = selectedCategoryName == "All" || product.category.equals(selectedCategoryName, ignoreCase = true)
-            val matchesQuery = searchQuery.isBlank() || product.name.contains(searchQuery, ignoreCase = true)
-            matchesCat && matchesQuery
-        }
+    val selectedItemFavorites = itemModeFavorites.filter { product ->
+        selectedCategoryName == "All" || product.category.equals(selectedCategoryName, ignoreCase = true)
     }
-    val selectedItemProducts = remember(itemModeProducts, searchQuery, selectedCategoryName) {
-        itemModeProducts.filter { product ->
-            val matchesCat = selectedCategoryName == "All" || product.category.equals(selectedCategoryName, ignoreCase = true)
-            val matchesQuery = searchQuery.isBlank() || product.name.contains(searchQuery, ignoreCase = true) || product.category.contains(searchQuery, ignoreCase = true)
-            matchesCat && matchesQuery
-        }
+    val selectedItemProducts = itemModeProducts.filter { product ->
+        selectedCategoryName == "All" || product.category.equals(selectedCategoryName, ignoreCase = true)
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-        ) {
-            // 5-SECOND SALE UNDO BANNER
-            if (lastSaleForUndo != null && undoSecondsLeft > 0) {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFF1E293B),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 6.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("✅", fontSize = 16.sp)
-                            Column {
-                                Text("Sale saved: ₹" + lastSaleForUndo!!.totalAmount.toInt() + " (" + lastSaleForUndo!!.paymentMode + ")", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                Text("Auto-dismiss in " + undoSecondsLeft + "s", color = Color(0xFF94A3B8), fontSize = 10.sp)
-                            }
-                        }
-                        Button(
-                            onClick = {
-                                viewModel.undoLastSale { msg ->
-                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Icon(Icons.Default.Undo, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Undo", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-
-            // TOP HEADER: TITLE & QUICK ACTIONS
-            Row(
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(12.dp)
+    ) {
+        // 5-SECOND SALE UNDO BANNER
+        if (lastSaleForUndo != null && undoSecondsLeft > 0) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(bottom = 6.dp)
             ) {
-                Column {
-                    Text(
-                        text = "Point of Sale",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Text(
-                        text = "Counter Point of Sale",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    FilledTonalButton(
-                        onClick = { showAddProductDialog = true },
-                        shape = RoundedCornerShape(20.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.primary
-                        )
-                    ) {
-                        Text("+ Add Item", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Column {
+                            Text("बिक्री सेव हुई • ₹${lastSaleForUndo!!.totalAmount.toInt()}", color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("${undoSecondsLeft}s तक Undo कर सकते हैं", color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f), fontSize = 10.sp)
+                        }
                     }
-
-                    IconButton(
-                        onClick = { showSmartImportDialog = true },
-                        modifier = Modifier.size(34.dp)
+                    Button(
+                        onClick = {
+                            viewModel.undoLastSale { msg ->
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.CloudUpload,
-                            contentDescription = "Import",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                        Icon(Icons.Default.Undo, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Undo", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
+        }
 
-            Spacer(modifier = Modifier.height(4.dp))
+        // TOP CART CARD
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(18.dp),
+            modifier = Modifier.fillMaxWidth(),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        viewModel.getString("live_counter_order"),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        letterSpacing = 1.sp
+                    )
+                    if (cart.isNotEmpty()) {
+                        Text(
+                            viewModel.getString("clear_cart"),
+                            fontSize = 12.sp,
+                            color = Color(0xFFDC2626),
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable { viewModel.clearCart() }
+                        )
+                    }
+                }
 
-            // ROUNDED PILL SEARCH BAR
-            AppTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = "Search dishes by name...",
-                leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFF64748B))
-                },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { searchQuery = "" }) {
-                            Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color(0xFF64748B))
-                        }
-                    } else {
-                        IconButton(onClick = { showAddCategoryDialog = true }) {
-                            Icon(Icons.Default.Tune, contentDescription = "Filter", tint = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.height(6.dp))
+
+                if (cart.isEmpty()) {
+                    Text(viewModel.getString("cart_empty_hint"), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        cart.forEachIndexed { index, item ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { showEditItemDialog = index },
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    val addOnStr = if (item.addOns.isNotEmpty()) " (+${item.addOns.joinToString(",")})" else ""
+                                    Text("${item.product.name}$addOnStr", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("₹${item.customPrice.toInt()} x ${item.quantity}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    IconButton(onClick = { viewModel.updateCartItemQuantity(index, item.quantity - 1) }, modifier = Modifier.size(24.dp)) {
+                                        Text("-", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Text("${item.quantity}", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    IconButton(onClick = { viewModel.updateCartItemQuantity(index, item.quantity + 1) }, modifier = Modifier.size(24.dp)) {
+                                        Text("+", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("₹${item.total.toInt()}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
                         }
                     }
                 }
-            )
 
-            // TOP FAVOURITES (QUICK 1-TAP COUNTER)
-            if (!selectedCategoryIsIceCream && (selectedItemFavorites.isNotEmpty() || selectedItemProducts.isNotEmpty())) {
-                val favsToShow = if (selectedItemFavorites.isNotEmpty()) selectedItemFavorites.take(8) else selectedItemProducts.take(6)
-                Spacer(modifier = Modifier.height(4.dp))
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
+                Spacer(modifier = Modifier.height(10.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
-                        Text("⭐ Popular Items (1-Tap +1):", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(3.dp))
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(favsToShow) { fav ->
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = Color.White,
-                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                                    modifier = Modifier.clickable { viewModel.addToCart(fav) }
+                    Column {
+                        if (discount > 0) {
+                            Text("Discount: -₹${discount.toInt()}", fontSize = 10.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.Bold)
+                        }
+                        Text("Total: ₹${finalTotal.toInt()}", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Button(
+                            onClick = { viewModel.completeOrder("CASH") },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                            enabled = cart.isNotEmpty()
+                        ) {
+                            Text(viewModel.getString("btn_cash"), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = { viewModel.completeOrder("UPI") },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                            enabled = cart.isNotEmpty()
+                        ) {
+                            Text(viewModel.getString("btn_upi"), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = { showUdharDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                            enabled = cart.isNotEmpty()
+                        ) {
+                            Text(viewModel.getString("btn_udhar"), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // QUICK ADD-ONS
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(viewModel.getString("add_ons"), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val addOns = listOf("🍋 +Lemon (₹5)" to 5.0, "🧂 +Masala (₹5)" to 5.0, "❄️ +Ice (₹5)" to 5.0)
+            addOns.forEach { (label, cost) ->
+                SuggestionChip(
+                    onClick = {
+                        if (cart.isNotEmpty()) {
+                            viewModel.addAddOn(cart.lastIndex, label.replace(Regex("[^a-zA-Z0-9]"), ""), cost)
+                        }
+                    },
+                    label = { Text(label, fontSize = 11.sp) }
+                )
+            }
+        }
+
+        // TOP 8 FAVOURITES (QUICK 1-TAP COUNTER)
+        if (!selectedCategoryIsIceCream &&
+            (selectedItemFavorites.isNotEmpty() || selectedItemProducts.isNotEmpty())
+        ) {
+            val favsToShow = if (selectedItemFavorites.isNotEmpty()) selectedItemFavorites.take(8) else selectedItemProducts.take(6)
+            Spacer(modifier = Modifier.height(4.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                    Text("⭐ सबसे ज़्यादा बिकने वाले (1-Tap +1):", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(3.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(favsToShow) { fav ->
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                modifier = Modifier.clickable { viewModel.addToCart(fav) }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Text(fav.name, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                        Text("+1 • ₹" + fav.price.toInt(), fontSize = 10.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.ExtraBold)
-                                    }
+                                    Text(fav.name, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                    Text("+1 • ₹${fav.price.toInt()}", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.ExtraBold)
                                 }
                             }
                         }
                     }
                 }
             }
+        }
 
-            Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
-            // CATEGORY BAR
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                item {
-                    FilterChip(
-                        selected = selectedCategoryName == "All",
-                        onClick = {
-                            selectedCategoryName = "All"
-                            selectedCompany = null
-                            companyAmountText = ""
-                        },
-                        label = { Text("All", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                    )
-                }
-                items(categories) { cat ->
-                    FilterChip(
-                        selected = selectedCategoryName == cat.name,
-                        onClick = {
-                            selectedCategoryName = cat.name
-                            selectedCompany = null
-                            companyAmountText = ""
-                        },
-                        label = { Text(cat.name, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                    )
-                }
+        // CATEGORY BAR & ACTION BUTTONS
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            item {
+                FilterChip(
+                    selected = selectedCategoryName == "All",
+                    onClick = {
+                        selectedCategoryName = "All"
+                        selectedCompany = null
+                        companyAmountText = ""
+                    },
+                    label = { Text("All", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                )
             }
+            items(categories) { cat ->
+                FilterChip(
+                    selected = selectedCategoryName == cat.name,
+                    onClick = {
+                        selectedCategoryName = cat.name
+                        selectedCompany = null
+                        companyAmountText = ""
+                    },
+                    label = { Text(cat.name, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                )
+            }
+        }
 
-            Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
                 FilledTonalButton(
                     onClick = { showSmartImportDialog = true },
                     modifier = Modifier.weight(1f),
@@ -1598,692 +1306,183 @@ fun POSScreen(
                     onClick = { showAddProductDialog = true },
                     modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    shape = RoundedCornerShape(8.dp)
                 ) {
                     Text("+ Item", fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                 }
-            }
+        }
 
-            Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
-            if (categories.isEmpty() && products.isEmpty()) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                    modifier = Modifier.fillMaxWidth().padding(top = 20.dp)
+        if (categories.isEmpty() && products.isEmpty()) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 20.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(Icons.Default.Category, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(46.dp))
+                    Icon(Icons.Default.Category, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(46.dp))
+                    Text(
+                        "No Categories or Items Yet!",
+                        fontSize = 16.sp,
+                        textAlign = TextAlign.Center,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "You can add items manually or use Smart Import to upload from Image / PDF / Text.",
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(onClick = { showAddCategoryDialog = true }) {
+                            Text("+ Add Category")
+                        }
+
+                        FilledTonalButton(onClick = { showSmartImportDialog = true }) {
+                            Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Import Menu")
+                        }
+                    }
+                }
+            }
+        } else {
+            val companyCategories = categories.filter { category ->
+                category.trackBoxes &&
+                    (selectedCategoryName == "All" || category.name.equals(selectedCategoryName, ignoreCase = true))
+            }
+            val itemProducts = selectedItemProducts
+            Column(modifier = Modifier.fillMaxSize()) {
+                companyCategories.forEach { category ->
+                    val companies = subCategories.filter {
+                        it.categoryName.equals(category.name, ignoreCase = true)
+                    }
+                    Text(
+                        "${category.name} • Company",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+                    if (companies.isEmpty()) {
                         Text(
-                            "No Categories or Items Yet!",
-                            fontSize = 16.sp,
-                            textAlign = TextAlign.Center,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            "You can add items manually or use Smart Import to upload from Image / PDF / Text.",
-                            fontSize = 12.sp,
-                            textAlign = TextAlign.Center,
+                            "Add companies in category management.",
+                            fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Button(onClick = { showAddCategoryDialog = true }) {
-                                Text("+ Add Category")
-                            }
-
-                            FilledTonalButton(onClick = { showSmartImportDialog = true }) {
-                                Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Import Menu")
-                            }
-                        }
-                    }
-                }
-            } else {
-                val companyCategories = categories.filter { category ->
-                    category.trackBoxes &&
-                        (selectedCategoryName == "All" || category.name.equals(selectedCategoryName, ignoreCase = true))
-                }
-                val itemProducts = selectedItemProducts
-                Column(modifier = Modifier.fillMaxSize()) {
-                    companyCategories.forEach { category ->
-                        val companies = subCategories.filter {
-                            it.categoryName.equals(category.name, ignoreCase = true)
-                        }
-                        Text(
-                            category.name + " • Company",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        )
-                        if (companies.isEmpty()) {
-                            Text(
-                                "Add companies in stock screen.",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        } else {
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                items(companies) { company ->
-                                    FilterChip(
-                                        selected = selectedCompany?.id == company.id,
-                                        onClick = {
-                                            selectedCompany = company
-                                            companyAmountText = company.defaultPrice
-                                                .takeIf { it > 0.0 }
-                                                ?.toString()
-                                                .orEmpty()
-                                        },
-                                        label = { Text(company.name, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    selectedCompany?.let { company ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            AppTextField(
-                                value = companyAmountText,
-                                onValueChange = { companyAmountText = it },
-                                label = "Amount (₹)",
-                                modifier = Modifier.weight(1f)
-                            )
-                            Button(
-                                onClick = {
-                                    val amount = companyAmountText.toDoubleOrNull()
-                                    if (amount != null && amount > 0) {
-                                        viewModel.addToCart(
-                                            Product(
-                                                id = "company-" + company.id + "-" + UUID.randomUUID(),
-                                                name = company.name,
-                                                category = company.categoryName,
-                                                brand = company.name,
-                                                price = amount
-                                            )
-                                        )
-                                        selectedCompany = null
-                                        companyAmountText = ""
-                                    }
-                                },
-                                enabled = companyAmountText.toDoubleOrNull()?.let { it > 0 } == true,
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                            ) { Text("Add to cart") }
-                        }
-                    }
-
-                    if (itemProducts.isEmpty()) {
-                        if (companyCategories.isEmpty()) {
-                            Box(
-                                modifier = Modifier.fillMaxSize().padding(top = 40.dp),
-                                contentAlignment = Alignment.TopCenter
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text("No items in this category yet.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    if (selectedCategoryName != "All" &&
-                                        categories.firstOrNull { it.name.equals(selectedCategoryName, ignoreCase = true) }?.trackBoxes != true
-                                    ) {
-                                        Button(onClick = { showAddProductDialog = true }) { Text("+ Add Item Here") }
-                                    }
-                                }
-                            }
-                        }
                     } else {
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(2),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.weight(1f),
-                            contentPadding = PaddingValues(bottom = if (cart.isNotEmpty()) 80.dp else 16.dp)
-                        ) {
-                            items(itemProducts) { product ->
-                                Card(
-                                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                                    shape = RoundedCornerShape(16.dp),
-                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                                    modifier = Modifier.fillMaxWidth(),
-                                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                                ) {
-                                    Column(modifier = Modifier.padding(10.dp)) {
-                                        // Food / Drink Visual Badge Container
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(84.dp)
-                                                .background(Color(0xFFFFF7ED), RoundedCornerShape(12.dp)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = getCategoryFoodIcon(product.category, product.name),
-                                                fontSize = 36.sp
-                                            )
-
-                                            Surface(
-                                                shape = RoundedCornerShape(6.dp),
-                                                color = Color(0xFFFFEDD5),
-                                                modifier = Modifier
-                                                    .align(Alignment.TopEnd)
-                                                    .padding(6.dp)
-                                            ) {
-                                                Text(
-                                                    text = product.category.take(8),
-                                                    fontSize = 9.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                                )
-                                            }
-                                        }
-
-                                        Spacer(modifier = Modifier.height(8.dp))
-
-                                        Text(
-                                            text = product.name,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF1E293B),
-                                            maxLines = 1
-                                        )
-
-                                        Spacer(modifier = Modifier.height(4.dp))
-
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = "₹" + product.price.toInt(),
-                                                fontSize = 15.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-
-                                            val inCartItem = cart.find { it.product.id == product.id }
-                                            val inCartIndex = cart.indexOfFirst { it.product.id == product.id }
-
-                                            if (inCartItem != null && inCartIndex >= 0) {
-                                                Surface(
-                                                    shape = RoundedCornerShape(18.dp),
-                                                    color = MaterialTheme.colorScheme.primaryContainer
-                                                ) {
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        modifier = Modifier.padding(horizontal = 2.dp, vertical = 1.dp)
-                                                    ) {
-                                                        IconButton(
-                                                            onClick = { viewModel.updateCartItemQuantity(inCartIndex, inCartItem.quantity - 1) },
-                                                            modifier = Modifier.size(24.dp)
-                                                        ) {
-                                                            Text("-", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                                        }
-                                                        Text(
-                                                            text = "" + inCartItem.quantity,
-                                                            fontSize = 12.sp,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = MaterialTheme.colorScheme.primary,
-                                                            modifier = Modifier.padding(horizontal = 2.dp)
-                                                        )
-                                                        IconButton(
-                                                            onClick = { viewModel.updateCartItemQuantity(inCartIndex, inCartItem.quantity + 1) },
-                                                            modifier = Modifier.size(24.dp)
-                                                        ) {
-                                                            Text("+", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                                        }
-                                                    }
-                                                }
-                                            } else {
-                                                IconButton(
-                                                    onClick = { viewModel.addToCart(product) },
-                                                    modifier = Modifier
-                                                        .size(32.dp)
-                                                        .background(MaterialTheme.colorScheme.primary, CircleShape)
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Add,
-                                                        contentDescription = "Add",
-                                                        tint = Color.White,
-                                                        modifier = Modifier.size(18.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(companies) { company ->
+                                FilterChip(
+                                    selected = selectedCompany?.id == company.id,
+                                    onClick = {
+                                        selectedCompany = company
+                                        companyAmountText = company.defaultPrice
+                                            .takeIf { it > 0.0 }
+                                            ?.toString()
+                                            .orEmpty()
+                                    },
+                                    label = { Text(company.name, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                                )
                             }
                         }
                     }
                 }
-            }
-        }
 
-        // BOTTOM FLOATING CART CAPSULE
-        if (cart.isNotEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = 68.dp),
-                contentAlignment = Alignment.BottomCenter
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(26.dp),
-                    color = Color.White,
-                    shadowElevation = 8.dp,
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 6.dp)
-                ) {
+                selectedCompany?.let { company ->
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.clickable { showConfirmSaleDialog = true }
-                        ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.KeyboardArrowUp,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
+                        OutlinedTextField(
+                            value = companyAmountText,
+                            onValueChange = { companyAmountText = it },
+                            label = { Text("Amount (₹)") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Button(
+                            onClick = {
+                                val amount = companyAmountText.toDoubleOrNull()
+                                if (amount != null && amount > 0) {
+                                    viewModel.addToCart(
+                                        Product(
+                                            id = "company-${company.id}-${UUID.randomUUID()}",
+                                            name = company.name,
+                                            category = company.categoryName,
+                                            brand = company.name,
+                                            price = amount
+                                        )
                                     )
+                                    selectedCompany = null
+                                    companyAmountText = ""
+                                }
+                            },
+                            enabled = companyAmountText.toDoubleOrNull()?.let { it > 0 } == true
+                        ) { Text("Add to cart") }
+                    }
+                }
+
+                if (itemProducts.isEmpty()) {
+                    if (companyCategories.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxSize().padding(top = 40.dp),
+                            contentAlignment = Alignment.TopCenter
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("No items in this category yet.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                if (selectedCategoryName != "All" &&
+                                    categories.firstOrNull { it.name.equals(selectedCategoryName, ignoreCase = true) }?.trackBoxes != true
+                                ) {
+                                    Button(onClick = { showAddProductDialog = true }) { Text("+ Add Item Here") }
                                 }
                             }
-                            Column {
-                                Text(
-                                    text = "" + cart.sumOf { it.quantity } + " Items",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF64748B)
-                                )
-                                Text(
-                                    text = "₹" + finalTotal.toInt(),
-                                    fontSize = 17.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFF1E293B)
-                                )
-                            }
                         }
-
-                        Button(
-                            onClick = { showConfirmSaleDialog = true },
-                            shape = RoundedCornerShape(20.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp)
-                        ) {
-                            Text(
-                                text = "Next  →",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
+                    }
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        items(itemProducts) { product ->
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(98.dp)
+                                    .clickable { viewModel.addToCart(product) },
+                                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxSize().padding(8.dp),
+                                    verticalArrangement = Arrangement.SpaceBetween,
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        product.category.uppercase(),
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1
+                                    )
+                                    Text(product.name, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, textAlign = TextAlign.Center)
+                                    Text("₹${product.price.toInt()}", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
                         }
                     }
                 }
             }
         }
-    }
-
-    // CONFIRM SALE MODAL DIALOG
-    if (showConfirmSaleDialog) {
-        val invoiceNumber = remember { "INV-" + (System.currentTimeMillis() % 100000) }
-        val invoiceDate = remember { viewModel.todayDateString }
-
-        AlertDialog(
-            onDismissRequest = { showConfirmSaleDialog = false },
-            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
-            modifier = Modifier
-                .fillMaxWidth(0.95f)
-                .fillMaxHeight(0.92f),
-            content = {
-                Surface(
-                    shape = RoundedCornerShape(24.dp),
-                    color = MaterialTheme.colorScheme.background,
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp)
-                    ) {
-                        // Title bar
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                IconButton(onClick = { showConfirmSaleDialog = false }) {
-                                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                                }
-                                Text(
-                                    text = viewModel.getString("confirm_sale"),
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            Text(
-                                text = "Clear",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFDC2626),
-                                modifier = Modifier
-                                    .clickable {
-                                        viewModel.clearCart()
-                                        showConfirmSaleDialog = false
-                                    }
-                                    .padding(8.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Invoice Number & Invoice Date Cards
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = Color.White),
-                                shape = RoundedCornerShape(12.dp),
-                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Text(viewModel.getString("invoice_number"), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(invoiceNumber, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = Color.White),
-                                shape = RoundedCornerShape(12.dp),
-                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Text(viewModel.getString("invoice_date"), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(invoiceDate, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Payment Mode Selector Card
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            shape = RoundedCornerShape(14.dp),
-                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        Text(if (confirmPaymentMode == "CASH") "💵" else if (confirmPaymentMode == "UPI") "📱" else "📒", fontSize = 16.sp)
-                                        Text(
-                                            text = if (confirmPaymentMode == "CASH") "Cash Sale" else if (confirmPaymentMode == "UPI") "UPI / Online" else "Udhaar Sale",
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                    Text(
-                                        text = "Change",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    listOf("CASH" to "Cash 💵", "UPI" to "UPI 📱", "UDHAR" to "Udhaar 📒").forEach { (mode, label) ->
-                                        val isSel = confirmPaymentMode == mode
-                                        Surface(
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = if (isSel) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .clickable { confirmPaymentMode = mode }
-                                        ) {
-                                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 8.dp)) {
-                                                Text(
-                                                    text = label,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
-                                                    color = if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if (confirmPaymentMode == "UDHAR") {
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    AppTextField(
-                                        value = udharCustomerName,
-                                        onValueChange = { udharCustomerName = it },
-                                        label = "Customer Name",
-                                        placeholder = "Type customer name..."
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Billing Items Section
-                        Text(
-                            text = viewModel.getString("billing_items") + " (" + cart.size + ")",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        LazyColumn(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            items(cart.size) { index ->
-                                val item = cart[index]
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = Color.White,
-                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(10.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(item.product.name, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                            Text("₹" + item.customPrice.toInt() + " each", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-
-                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                            IconButton(
-                                                onClick = { viewModel.updateCartItemQuantity(index, item.quantity - 1) },
-                                                modifier = Modifier.size(24.dp)
-                                            ) {
-                                                Text("-", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                                            }
-                                            Text("" + item.quantity, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                            IconButton(
-                                                onClick = { viewModel.updateCartItemQuantity(index, item.quantity + 1) },
-                                                modifier = Modifier.size(24.dp)
-                                            ) {
-                                                Text("+", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                                            }
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text("₹" + item.total.toInt(), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Quick Action Chips: + Add Discount, + Lemon, + Masala
-                            item {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 4.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    SuggestionChip(
-                                        onClick = { showDiscountDialog = true },
-                                        label = { Text("+ Add Discount", fontSize = 10.sp, fontWeight = FontWeight.Bold) }
-                                    )
-                                    val addOns = listOf("🍋 +Lemon" to 5.0, "🧂 +Masala" to 5.0)
-                                    addOns.forEach { (label, cost) ->
-                                        SuggestionChip(
-                                            onClick = {
-                                                if (cart.isNotEmpty()) {
-                                                    viewModel.addAddOn(cart.lastIndex, label.replace(Regex("[^a-zA-Z0-9]"), ""), cost)
-                                                }
-                                            },
-                                            label = { Text(label, fontSize = 10.sp) }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Bottom Total & Save Button Card
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            shape = RoundedCornerShape(16.dp),
-                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                if (discount > 0) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text("Discount Applied:", fontSize = 11.sp, color = Color(0xFFDC2626))
-                                        Text("-₹" + discount.toInt(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
-                                    }
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                }
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("Total Amount", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text("₹" + finalTotal.toInt(), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    TextButton(
-                                        onClick = { showConfirmSaleDialog = false },
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Text("Cancel")
-                                    }
-
-                                    Button(
-                                        onClick = {
-                                            if (confirmPaymentMode == "UDHAR" && udharCustomerName.isBlank()) {
-                                                Toast.makeText(context, "Enter customer name for Udhaar", Toast.LENGTH_SHORT).show()
-                                            } else {
-                                                viewModel.completeOrder(confirmPaymentMode, udharCustomerName.takeIf { it.isNotBlank() })
-                                                showConfirmSaleDialog = false
-                                                Toast.makeText(context, "Sale completed! ₹" + finalTotal.toInt(), Toast.LENGTH_SHORT).show()
-                                            }
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier.weight(2f)
-                                    ) {
-                                        Text(viewModel.getString("save_sale_btn"), fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        )
-    }
-
-    if (showDiscountDialog) {
-        AlertDialog(
-            onDismissRequest = { showDiscountDialog = false },
-            title = { Text("Add Discount (₹)", fontWeight = FontWeight.Bold) },
-            text = {
-                AppTextField(
-                    value = discountInputText,
-                    onValueChange = { discountInputText = it },
-                    label = "Discount Amount"
-                )
-            },
-            confirmButton = {
-                Button(onClick = {
-                    val disc = discountInputText.toDoubleOrNull() ?: 0.0
-                    viewModel.setDiscount(disc)
-                    showDiscountDialog = false
-                }) {
-                    Text("Apply")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    viewModel.setDiscount(0.0)
-                    showDiscountDialog = false
-                }) {
-                    Text("Clear")
-                }
-            }
-        )
     }
 
     if (showSmartImportDialog) {
@@ -2299,10 +1498,11 @@ fun POSScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Create a category for your products.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    AppTextField(
+                    OutlinedTextField(
                         value = catName,
                         onValueChange = { catName = it },
-                        label = "Category Name"
+                        label = { Text("Category Name") },
+                        singleLine = true
                     )
                 }
             },
@@ -2346,10 +1546,11 @@ fun POSScreen(
                     }
                     Text("Select Category:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     if (categories.isEmpty()) {
-                        AppTextField(
+                        OutlinedTextField(
                             value = category,
                             onValueChange = { category = it },
-                            label = "Category name"
+                            label = { Text("Category name") },
+                            singleLine = true
                         )
                     } else {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -2363,15 +1564,17 @@ fun POSScreen(
                         }
                     }
 
-                    AppTextField(
+                    OutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
-                        label = "Item name"
+                        label = { Text("Item name") },
+                        singleLine = true
                     )
-                    AppTextField(
+                    OutlinedTextField(
                         value = priceText,
                         onValueChange = { priceText = it },
-                        label = "Selling Rate (₹)"
+                        label = { Text("Selling Rate (₹)") },
+                        singleLine = true
                     )
                 }
             },
@@ -2398,13 +1601,13 @@ fun POSScreen(
     if (showUdharDialog) {
         AlertDialog(
             onDismissRequest = { showUdharDialog = false },
-            title = { Text("Credit Sale (Udhaar)", fontWeight = FontWeight.Bold) },
+            title = { Text("Credit Sale (उधार खाता)", fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    AppTextField(
+                    OutlinedTextField(
                         value = udharCustomerName,
                         onValueChange = { udharCustomerName = it },
-                        label = "Customer Name",
+                        label = { Text("ग्राहक का नाम (Customer Name)") },
                         leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
                         trailingIcon = {
                             if (udharCustomerName.isNotBlank()) {
@@ -2412,7 +1615,9 @@ fun POSScreen(
                                     Icon(Icons.Default.Clear, contentDescription = "Clear")
                                 }
                             }
-                        }
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
                     )
 
                     // Autocomplete Customer Suggestions
@@ -2425,7 +1630,7 @@ fun POSScreen(
 
                     if (suggestions.isNotEmpty()) {
                         Text(
-                            if (udharCustomerName.isBlank()) "Recent Customers (Tap to Select):" else "Matching Customers (Autocomplete):",
+                            if (udharCustomerName.isBlank()) "हाल के ग्राहक (Tap to Select):" else "मिलते-जुलते ग्राहक (Autocomplete):",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -2452,7 +1657,7 @@ fun POSScreen(
                                         ) {
                                             Text(cust.name, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                             Text(
-                                                "Due: ₹" + cust.outstandingDebt.toInt(),
+                                                "बकाया: ₹${cust.outstandingDebt.toInt()}",
                                                 fontSize = 11.sp,
                                                 color = if (cust.outstandingDebt > 0) Color(0xFFDC2626) else Color(0xFF16A34A),
                                                 fontWeight = FontWeight.Bold
@@ -2471,7 +1676,7 @@ fun POSScreen(
                             Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.PersonAdd, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("✨ New customer '" + udharCustomerName + "' will be added to Khata", fontSize = 11.sp, color = Color(0xFF15803D), fontWeight = FontWeight.Bold)
+                                Text("✨ नया ग्राहक '${udharCustomerName}' खाते में जुड़ेगा", fontSize = 11.sp, color = Color(0xFF15803D), fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -2503,11 +1708,11 @@ fun POSScreen(
         if (item != null) {
             var customRateText by remember { mutableStateOf(item.customPrice.toInt().toString()) }
             var qtyText by remember { mutableStateOf(item.quantity.toString()) }
-            var activeKeypadTarget by remember { mutableStateOf("PRICE") }
+            var activeKeypadTarget by remember { mutableStateOf("PRICE") } // "PRICE" or "QTY"
 
             AlertDialog(
                 onDismissRequest = { showEditItemDialog = null },
-                title = { Text("Edit: " + item.product.name, fontWeight = FontWeight.Bold, fontSize = 15.sp) },
+                title = { Text("Edit: ${item.product.name}", fontWeight = FontWeight.Bold, fontSize = 15.sp) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2519,7 +1724,7 @@ fun POSScreen(
                                     .clickable { activeKeypadTarget = "QTY" }
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
-                                    Text("Quantity", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("मात्रा (Quantity)", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     Text(qtyText.ifBlank { "0" }, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
@@ -2532,14 +1737,14 @@ fun POSScreen(
                                     .clickable { activeKeypadTarget = "PRICE" }
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
-                                    Text("Rate (₹)", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text("₹" + customRateText.ifBlank { "0" }, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                    Text("रेट (Rate ₹)", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("₹${customRateText.ifBlank { "0" }}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                 }
                             }
                         }
 
                         // Touch Numeric Keypad for fast 1-hand operation
-                        Text("Numeric Keypad:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("त्वरित कीपैड (1-Hand Keypad):", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             listOf(
                                 listOf("1", "2", "3"),
@@ -2583,7 +1788,7 @@ fun POSScreen(
                         viewModel.updateCartItemPrice(idx, p)
                         showEditItemDialog = null
                     }) {
-                        Text("Update")
+                        Text("Update (ओके)")
                     }
                 },
                 dismissButton = {
@@ -2591,7 +1796,7 @@ fun POSScreen(
                         viewModel.updateCartItemQuantity(idx, 0)
                         showEditItemDialog = null
                     }) {
-                        Text("Remove", color = Color(0xFFDC2626))
+                        Text("Remove (हटाएं)", color = Color(0xFFDC2626))
                     }
                 }
             )
@@ -3102,7 +2307,7 @@ fun InwardBillDialog(
                             ) {
                                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Scanning bill with ML Kit OCR...", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Google ML Kit OCR बिल पढ़ रहा है...", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -3154,8 +2359,8 @@ fun InwardBillDialog(
                 // 7. EDITABLE ITEMS TABLE
                 item {
                     Text(
-                        if (trackBoxes) "📦 Invoice Items & Boxes (${draftItems.size} items):"
-                        else "Invoice Items (${draftItems.size} items):",
+                        if (trackBoxes) "📦 इनवॉइस आइटम्स & बॉक्स रिव्यू (${draftItems.size} Items):"
+                        else "इनवॉइस आइटम्स (${draftItems.size} Items):",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -3284,12 +2489,12 @@ fun InwardBillDialog(
                         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             if (trackBoxes) {
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("Total Boxes:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                    Text("कुल पेटियां (Total Boxes):", color = Color(0xFF94A3B8), fontSize = 11.sp)
                                     Text("$totalBoxes Boxes", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                 }
                             }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Total Purchase Cost:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                Text("कुल बिल खरीद रकम:", color = Color(0xFF94A3B8), fontSize = 11.sp)
                                 Text(
                                     "₹${String.format(Locale.getDefault(), "%.2f", totalCost)}",
                                     color = Color(0xFF38BDF8),
@@ -3298,7 +2503,7 @@ fun InwardBillDialog(
                                 )
                             }
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Estimated Sales (MRP):", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                Text("अनुमानित कुल बिक्री (MRP):", color = Color(0xFF94A3B8), fontSize = 11.sp)
                                 Text(
                                     "₹${String.format(Locale.getDefault(), "%.2f", totalSelling)}",
                                     color = Color.White,
@@ -3308,7 +2513,7 @@ fun InwardBillDialog(
                             }
                             HorizontalDivider(color = Color(0xFF334155), modifier = Modifier.padding(vertical = 4.dp))
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Estimated Net Profit:", color = Color(0xFF4ADE80), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Text("इस माल पर अनुमानित शुद्ध मुनाफ़ा:", color = Color(0xFF4ADE80), fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                 Text(
                                     "+₹${String.format(Locale.getDefault(), "%.2f", totalProjectedProfit)} (${overallMargin.toInt()}%)",
                                     color = Color(0xFF4ADE80),
@@ -3363,9 +2568,9 @@ fun InwardBillDialog(
                         }
                     }
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF366A55))
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A))
             ) {
-                Text("Save Stock", fontWeight = FontWeight.Bold)
+                Text("Save Inward Stock & Update Company Boxes")
             }
         },
         dismissButton = {
@@ -3412,343 +2617,265 @@ fun InwardBillDialog(
 // ==============================================================================
 @Composable
 fun InventoryScreen(viewModel: ShopViewModel) {
-    val context = LocalContext.current
     val categories by viewModel.categories.collectAsState()
     val subCategories by viewModel.subCategories.collectAsState()
     val varietyStocks by viewModel.iceCreamVarietyStock.collectAsState()
-    val products by viewModel.products.collectAsState()
     val iceCreamProfit by viewModel.iceCreamProfitStats.collectAsState()
 
-    var activeTab by remember { mutableStateOf("ICE_CREAM") }
+    var selectedFilter by remember { mutableStateOf("All") }
+    var showAddStockDialog by remember { mutableStateOf(false) }
     var showInwardDialog by remember { mutableStateOf(false) }
-    var showAddCompanyDialog by remember { mutableStateOf(false) }
-    var newCompanyNameInput by remember { mutableStateOf("") }
-    var showAddProductDialog by remember { mutableStateOf(false) }
-    var newProductNameInput by remember { mutableStateOf("") }
-    var newProductPriceInput by remember { mutableStateOf("20") }
+    var selectedCompanyForStock by remember { mutableStateOf<SubCategory?>(null) }
+    var stockVarietyName by remember { mutableStateOf("") }
+    var stockCountText by remember { mutableStateOf("1") }
 
-    val boxTrackedCategories = categories.filter { it.trackBoxes }
-    val defaultIceCreamCategoryName = boxTrackedCategories.firstOrNull()?.name ?: "Ice-cream"
-
-    val iceCreamCompanies = subCategories.filter { sub ->
-        boxTrackedCategories.any { it.name.equals(sub.categoryName, ignoreCase = true) }
+    val boxTrackedSubCategories = subCategories.filter { subCategory ->
+        categories.any { it.trackBoxes && it.name.equals(subCategory.categoryName, ignoreCase = true) }
     }
+    val filterOptions = listOf("All") + categories.filter { it.trackBoxes }.map { it.name }
+    val filtered = varietyStocks.filter { stock ->
+        boxTrackedSubCategories.any {
+            it.categoryName.equals(stock.categoryName, ignoreCase = true) &&
+                it.name.equals(stock.companyName, ignoreCase = true)
+        } && (selectedFilter == "All" ||
+            stock.categoryName.equals(selectedFilter, ignoreCase = true))
+    }
+    val totalBoxes = boxTrackedSubCategories.sumOf { it.sealedBoxes }
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 1. TOP HEADER (Screen 3: Ice-cream Stock & Company ke hisaab se box)
+        // ICE-CREAM PROFIT ANALYTICS CARD
         item {
-            Column(modifier = Modifier.padding(top = 2.dp, bottom = 2.dp)) {
-                Text(
-                    text = "Ice-cream Stock",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color(0xFF1E293B)
-                )
-                Text(
-                    text = "Company ke hisaab se box",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFF64748B)
-                )
-            }
-        }
-
-        // 2. PRIMARY BUTTON (Forest Green #366A55: 📦 Maal aaya · Bill scan karo)
-        item {
-            Button(
-                onClick = { showInwardDialog = true },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF366A55),
-                    contentColor = Color.White
-                )
-            ) {
-                Text(
-                    text = "📦 Maal aaya · Bill scan karo",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-
-        // TABS: ICE-CREAM BOXES vs SODA & ALL ITEMS
-        item {
-            Row(
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(18.dp),
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = if (activeTab == "ICE_CREAM") Color(0xFFF5C7A9) else Color.White,
-                    border = if (activeTab == "ICE_CREAM") null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { activeTab = "ICE_CREAM" }
-                ) {
-                    Text(
-                        text = "🍨 Ice-cream Boxes",
-                        fontSize = 12.sp,
-                        fontWeight = if (activeTab == "ICE_CREAM") FontWeight.Bold else FontWeight.Medium,
-                        color = if (activeTab == "ICE_CREAM") Color(0xFF1E293B) else Color(0xFF64748B),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = if (activeTab == "SODA") Color(0xFFF5C7A9) else Color.White,
-                    border = if (activeTab == "SODA") null else BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { activeTab = "SODA" }
-                ) {
-                    Text(
-                        text = "🥤 Soda & Other Items",
-                        fontSize = 12.sp,
-                        fontWeight = if (activeTab == "SODA") FontWeight.Bold else FontWeight.Medium,
-                        color = if (activeTab == "SODA") Color(0xFF1E293B) else Color(0xFF64748B),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
-                }
-            }
-        }
-
-        if (activeTab == "ICE_CREAM") {
-            val companiesToDisplay = iceCreamCompanies
-
-            items(companiesToDisplay) { company ->
-                val boxes = company.sealedBoxes
-                val lowLimit = 5
-                val isLow = boxes <= lowLimit
-
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // Header Row: Company Name + Badge
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = company.name,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF1E293B)
-                            )
-
-                            // Badge: Kam hai / Theek
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (isLow) Color(0xFFFEECE8) else Color(0xFFDCFCE7)
-                            ) {
-                                Text(
-                                    text = if (isLow) "Kam hai" else "Theek",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isLow) Color(0xFFC2410C) else Color(0xFF15803D),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                )
-                            }
-                        }
-
-                        // Count row: 3 box · alert 5 se kam par
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = "" + boxes,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (isLow) Color(0xFFC2410C) else Color(0xFF1E293B)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "box · alert " + lowLimit + " se kam par",
-                                fontSize = 12.sp,
-                                color = Color(0xFF64748B)
-                            )
-                        }
-
-                        // Progress Bar Line
-                        val progressFraction = (boxes.toFloat() / (lowLimit * 2).toFloat()).coerceIn(0.08f, 1f)
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(6.dp)
-                                .clip(RoundedCornerShape(3.dp))
-                                .background(Color(0xFFF1F5F9))
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(fraction = progressFraction)
-                                    .fillMaxHeight()
-                                    .clip(RoundedCornerShape(3.dp))
-                                    .background(if (isLow) Color(0xFFC2410C) else Color(0xFF366A55))
-                            )
-                        }
-
-                        // Controls Row: +1 Box, -1 Open
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            FilledTonalButton(
-                                onClick = {
-                                    viewModel.addIceCreamVarietyBoxes(
-                                        company.categoryName,
-                                        company.name,
-                                        "Assorted Variety",
-                                        1
-                                    )
-                                },
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                colors = ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = Color(0xFF366A55).copy(alpha = 0.12f),
-                                    contentColor = Color(0xFF366A55)
-                                )
-                            ) {
-                                Text("+1 Box", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-
-                            Spacer(modifier = Modifier.width(8.dp))
-
-                            FilledTonalButton(
-                                onClick = {
-                                    val stock = varietyStocks.firstOrNull {
-                                        it.categoryName.equals(company.categoryName, ignoreCase = true) &&
-                                        it.companyName.equals(company.name, ignoreCase = true)
-                                    }
-                                    if (stock != null) {
-                                        viewModel.openIceCreamVarietyBox(stock)
-                                    } else {
-                                        Toast.makeText(context, "Box opened at counter", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                enabled = boxes > 0,
-                                colors = ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = Color(0xFFF1F5F9),
-                                    contentColor = Color(0xFF475569)
-                                )
-                            ) {
-                                Text("-1 Open", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 4. BOTTOM DASHED BUTTON: + Nayi company jodo
-            item {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color.White,
-                    border = BorderStroke(1.dp, Color(0xFF94A3B8)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showAddCompanyDialog = true }
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 14.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "+ Nayi company jodo",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1E293B)
-                        )
-                    }
-                }
-            }
-        } else {
-            // SODA & ALL ITEMS LIST TAB
-            val sodaItems = products.filter {
-                categories.none { cat -> cat.trackBoxes && cat.name.equals(it.category, ignoreCase = true) }
-            }
-
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Soda & Counter Products (" + sodaItems.size + ")",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1E293B)
-                    )
-                    Button(
-                        onClick = { showAddProductDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF366A55)),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                    ) {
-                        Text("+ Add Item", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-
-            items(sodaItems) { product ->
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("🍨", fontSize = 20.sp)
+                            Column {
+                                Text(viewModel.getString("icecream_profit_title"), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text("बिक्री व खरीद लागत के आधार पर शुद्ध मुनाफ़ा", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFF16A34A).copy(alpha = 0.15f)
+                        ) {
                             Text(
-                                text = product.name,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF1E293B)
-                            )
-                            Text(
-                                text = product.category + " • Rate: ₹" + product.price.toInt(),
-                                fontSize = 11.sp,
-                                color = Color(0xFF64748B)
+                                "${iceCreamProfit.marginPercent.toInt()}% Margin",
+                                color = Color(0xFF16A34A),
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
+                    }
 
-                        IconButton(
-                            onClick = { viewModel.deleteProduct(product) },
-                            modifier = Modifier.size(30.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.DeleteOutline,
-                                contentDescription = "Delete",
-                                tint = Color(0xFFDC2626),
-                                modifier = Modifier.size(18.dp)
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column {
+                            Text("कुल आइसक्रीम बिक्री:", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("₹${iceCreamProfit.totalSalesRevenue.toInt()}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        }
+                        Column {
+                            Text("खरीद लागत (Cost):", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("₹${iceCreamProfit.totalCostOfGoods.toInt()}", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("शुद्ध मुनाफ़ा (Profit):", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("+₹${iceCreamProfit.grossProfit.toInt()} 🟢", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF16A34A))
+                        }
+                    }
+
+                    // Prominent button to upload / inward stock bill!
+                    Button(
+                        onClick = { showInwardDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Icon(Icons.Default.PostAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(viewModel.getString("inward_stock_btn"), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+            }
+        }
+
+        if (boxTrackedSubCategories.isNotEmpty()) item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("📦 " + viewModel.getString("godown_box_status"), color = Color(0xFF94A3B8), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("$totalBoxes Sealed Boxes", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Tap '-1 Open' when opening a box at counter.", color = Color(0xFFCBD5E1), fontSize = 12.sp)
+                }
+            }
+        }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f)) {
+                    items(filterOptions) { opt ->
+                        FilterChip(
+                            selected = selectedFilter == opt,
+                            onClick = { selectedFilter = opt },
+                            label = { Text(opt, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        )
+                    }
+                }
+                if (boxTrackedSubCategories.isNotEmpty()) {
+                    Button(
+                        onClick = { showAddStockDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text(viewModel.getString("quick_new_stock"), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        if (filtered.isEmpty()) {
+            item {
+                Text("No item-wise stock yet. Add stock by company and variety.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+            }
+        } else {
+            items(filtered) { stock ->
+                val isAssignedVariety = stock.varietyName != "Opening stock (unassigned)"
+                val isLowStock = isAssignedVariety && stock.sealedBoxes <= stock.lowStockLimit
+                var limitText by remember(stock.categoryName, stock.companyName, stock.varietyName, stock.lowStockLimit) {
+                    mutableStateOf(stock.lowStockLimit.toString())
+                }
+                var boxesText by remember(stock.categoryName, stock.companyName, stock.varietyName, stock.sealedBoxes) {
+                    mutableStateOf(stock.sealedBoxes.toString())
+                }
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "${stock.categoryName} • ${stock.companyName}",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            Text(stock.varietyName, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                if (isLowStock) {
+                                    Icon(
+                                        Icons.Default.Warning,
+                                        contentDescription = null,
+                                        tint = if (stock.sealedBoxes == 0) Color(0xFFDC2626) else Color(0xFFB45309),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                                Text(
+                                    "${stock.sealedBoxes} boxes available",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = when {
+                                        stock.sealedBoxes == 0 -> Color(0xFFDC2626)
+                                        isLowStock -> Color(0xFFB45309)
+                                        else -> MaterialTheme.colorScheme.primary
+                                    }
+                                )
+                            }
+                            if (isLowStock) {
+                                Text(
+                                    "${stock.varietyName}: only ${stock.sealedBoxes} box left (limit ${stock.lowStockLimit}).",
+                                    color = if (stock.sealedBoxes == 0) Color(0xFFDC2626) else Color(0xFFB45309),
+                                    fontSize = 11.sp,
+                                    fontWeight = if (stock.sealedBoxes == 0) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                OutlinedTextField(
+                                    value = boxesText,
+                                    onValueChange = { value ->
+                                        if (value.isEmpty() || value.all(Char::isDigit)) boxesText = value
+                                    },
+                                    label = { Text("Qty") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = limitText,
+                                    onValueChange = { value ->
+                                        if (value.isEmpty() || value.all(Char::isDigit)) limitText = value
+                                    },
+                                    label = { Text("Low limit") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            TextButton(
+                                onClick = {
+                                    viewModel.updateIceCreamVarietyStock(
+                                        stock,
+                                        sealedBoxes = boxesText.toIntOrNull() ?: stock.sealedBoxes,
+                                        lowStockLimit = limitText.toIntOrNull() ?: stock.lowStockLimit
+                                    )
+                                }
+                            ) { Text("Save") }
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Button(
+                                onClick = {
+                                    viewModel.addIceCreamVarietyBoxes(
+                                        stock.categoryName,
+                                        stock.companyName,
+                                        stock.varietyName,
+                                        1
+                                    )
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text("+1", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            }
+
+                            Button(
+                                onClick = { viewModel.openIceCreamVarietyBox(stock) },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                enabled = stock.sealedBoxes > 0
+                            ) {
+                                Text("Open", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
                 }
@@ -3756,89 +2883,61 @@ fun InventoryScreen(viewModel: ShopViewModel) {
         }
     }
 
-    // ADD NEW COMPANY DIALOG
-    if (showAddCompanyDialog) {
-        AlertDialog(
-            onDismissRequest = { showAddCompanyDialog = false },
-            title = { Text("Add New Company", fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Add ice-cream company (e.g. Amul, Havmor):", fontSize = 12.sp, color = Color(0xFF64748B))
-                    AppTextField(
-                        value = newCompanyNameInput,
-                        onValueChange = { newCompanyNameInput = it },
-                        label = "Company Name",
-                        placeholder = "e.g. Amul, Dinshaw's..."
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val trimmed = newCompanyNameInput.trim()
-                        if (trimmed.isNotBlank()) {
-                            viewModel.addSubCategory(defaultIceCreamCategoryName, trimmed, 0.0) {
-                                newCompanyNameInput = ""
-                                showAddCompanyDialog = false
-                            }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF366A55))
-                ) {
-                    Text("Save")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddCompanyDialog = false }) { Text("Cancel") }
-            }
-        )
-    }
+    if (showAddStockDialog && boxTrackedSubCategories.isNotEmpty()) {
+        val selectedCompany = selectedCompanyForStock ?: boxTrackedSubCategories.first().also {
+            selectedCompanyForStock = it
+        }
 
-    // ADD NEW SODA/COUNTER PRODUCT DIALOG
-    if (showAddProductDialog) {
         AlertDialog(
-            onDismissRequest = { showAddProductDialog = false },
-            title = { Text("Add New Soda Item", fontWeight = FontWeight.Bold) },
+            onDismissRequest = { showAddStockDialog = false },
+            title = { Text("Add variety stock", fontWeight = FontWeight.Bold) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AppTextField(
-                        value = newProductNameInput,
-                        onValueChange = { newProductNameInput = it },
-                        label = "Item Name",
-                        placeholder = "e.g. Jeera Masala, Nimbu Soda..."
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Company", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(boxTrackedSubCategories) { company ->
+                            FilterChip(
+                                selected = selectedCompany.id == company.id,
+                                onClick = { selectedCompanyForStock = company },
+                                label = { Text(company.name, fontSize = 11.sp) }
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = stockVarietyName,
+                        onValueChange = { stockVarietyName = it },
+                        label = { Text("Item / variety") },
+                        singleLine = true
                     )
-                    AppTextField(
-                        value = newProductPriceInput,
-                        onValueChange = { newProductPriceInput = it },
-                        label = "Selling Price (₹)"
+                    OutlinedTextField(
+                        value = stockCountText,
+                        onValueChange = { stockCountText = it },
+                        label = { Text("Boxes") },
+                        singleLine = true
                     )
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        val name = newProductNameInput.trim()
-                        val price = newProductPriceInput.toDoubleOrNull() ?: 20.0
-                        if (name.isNotBlank()) {
-                            viewModel.addProduct(
-                                name = name,
-                                category = "Soda",
-                                brand = "",
-                                price = price,
-                                boxes = 0
-                            )
-                            newProductNameInput = ""
-                            newProductPriceInput = "20"
-                            showAddProductDialog = false
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF366A55))
-                ) {
-                    Text("Save")
+                Button(onClick = {
+                    val count = stockCountText.toIntOrNull() ?: 0
+                    if (count > 0 && stockVarietyName.isNotBlank()) {
+                        viewModel.addIceCreamVarietyBoxes(
+                            selectedCompany.categoryName,
+                            selectedCompany.name,
+                            stockVarietyName,
+                            count
+                        )
+                        showAddStockDialog = false
+                        selectedCompanyForStock = null
+                        stockVarietyName = ""
+                        stockCountText = "1"
+                    }
+                }) {
+                    Text("Add")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showAddProductDialog = false }) { Text("Cancel") }
+                TextButton(onClick = { showAddStockDialog = false }) { Text("Cancel") }
             }
         )
     }
@@ -3892,10 +2991,10 @@ fun KhataScreen(viewModel: ShopViewModel) {
                                 val debtorsWithPhone = khataList.filter { it.outstandingDebt > 0 && it.phone.isNotBlank() }
                                 val first = debtorsWithPhone.firstOrNull()
                                 if (first != null) {
-                                    val msg = "Hello ${first.name},\nYour outstanding balance at Refresh Soda is ₹${first.outstandingDebt.toInt()}. Please clear at your convenience. Thank you!"
+                                    val msg = "नमस्ते ${first.name} जी,\nरिफ्रेश सोडा दुकान पर आपका पिछला बकाया ₹${first.outstandingDebt.toInt()} है। कृपया जल्द भुगतान करें। धन्यवाद!"
                                     sendWhatsAppMessage(context, first.phone, msg)
                                 } else {
-                                    Toast.makeText(context, "$debtorCount customers with pending dues. Tap Send on card to message.", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "$debtorCount बकायेदार हैं। कृपया ग्राहक कार्ड पर Send दबाएं।", Toast.LENGTH_SHORT).show()
                                 }
                             },
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
@@ -3904,7 +3003,7 @@ fun KhataScreen(viewModel: ShopViewModel) {
                         ) {
                             Icon(Icons.Default.Campaign, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("📢 Due Payment Reminders ($debtorCount customers)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("📢 बकाया तकादा रिमाइंडर ($debtorCount ग्राहक)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -3955,7 +3054,7 @@ fun KhataScreen(viewModel: ShopViewModel) {
                                     color = Color(0xFFFEE2E2),
                                     shape = RoundedCornerShape(4.dp)
                                 ) {
-                                    Text("⚠️ 7+ days old", color = Color(0xFFDC2626), fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
+                                    Text("⚠️ 7+ दिन पुराना", color = Color(0xFFDC2626), fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
                                 }
                             }
                         }
@@ -4244,16 +3343,16 @@ fun DailyExpensesView(viewModel: ShopViewModel) {
     var showAddDialog by remember { mutableStateOf(false) }
 
     val categories = listOf(
-        "❄️ Ice",
-        "🍋 Lemons & Flavors",
-        "🥤 Syrup & CO2 Gas",
-        "🥛 Milk & Shake Supplies",
-        "🧻 Cups, Glasses & Straws",
-        "💡 Electricity Bill",
-        "🏪 Shop Rent",
-        "👷 Staff Salary / Labor",
-        "🔧 Machine Repair",
-        "📦 Other Miscellaneous"
+        "❄️ बर्फ (Ice)",
+        "🍋 नींबू (Lemons)",
+        "🥤 सोडे का माल व गैस (Syrup & Gas)",
+        "🥛 दूध व शेक सामग्री (Milk & Shake)",
+        "🧻 ग्लास व स्ट्रॉ (Glasses & Straws)",
+        "💡 बिजली बिल (Electricity Bill)",
+        "🏪 दुकान का किराया (Shop Rent)",
+        "👷 कारीगर / मज़दूरी (Labor / Salary)",
+        "🔧 मशीन मेंटेनेंस (Machine Repair)",
+        "📦 अन्य खर्च (Other Miscellaneous)"
     )
 
     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -4270,7 +3369,7 @@ fun DailyExpensesView(viewModel: ShopViewModel) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text("Today's Expenses", fontSize = 12.sp, color = Color(0xFF991B1B), fontWeight = FontWeight.Bold)
+                        Text("आज का कुल खर्चा (Total Expenses)", fontSize = 12.sp, color = Color(0xFF991B1B), fontWeight = FontWeight.Bold)
                         Text("₹${totalExpenses.toInt()}", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFDC2626))
                     }
                     Button(
@@ -4287,7 +3386,7 @@ fun DailyExpensesView(viewModel: ShopViewModel) {
         // CATEGORY BREAKDOWN CHIPS
         if (categoryExpMap.isNotEmpty()) {
             item {
-                Text("Expense Breakdown:", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("खर्चों का विवरण (Breakdown):", fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -4307,12 +3406,12 @@ fun DailyExpensesView(viewModel: ShopViewModel) {
         }
 
         item {
-            Text("Recent Expenses Log", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text("हाल के खर्चे (Recent Expenses Log)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
         }
 
         if (expenses.isEmpty()) {
             item {
-                Text("No expenses recorded today.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                Text("आज कोई खर्चा दर्ज नहीं हुआ है।", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             }
         } else {
             items(expenses) { exp ->
@@ -4350,10 +3449,10 @@ fun DailyExpensesView(viewModel: ShopViewModel) {
 
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
-            title = { Text("+ Record Expense", fontWeight = FontWeight.Bold) },
+            title = { Text("+ नया खर्चा दर्ज करें", fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Select Category:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("कैटेगरी चुनें:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         items(categories) { cat ->
                             FilterChip(
@@ -4367,20 +3466,20 @@ fun DailyExpensesView(viewModel: ShopViewModel) {
                         }
                     }
 
-                    OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Expense Title / Note") }, singleLine = true)
-                    OutlinedTextField(value = amountText, onValueChange = { amountText = it }, label = { Text("Amount (₹)") }, singleLine = true)
+                    OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("खर्चे का विवरण (Title/Note)") }, singleLine = true)
+                    OutlinedTextField(value = amountText, onValueChange = { amountText = it }, label = { Text("रकम (₹ Amount)") }, singleLine = true)
 
-                    Text("Payment Source:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("पेमेंट कहाँ से दिया?", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
                             selected = paymentMode == "CASH",
                             onClick = { paymentMode = "CASH" },
-                            label = { Text("💵 Cash Galla") }
+                            label = { Text("💵 गल्ले से (Cash)") }
                         )
                         FilterChip(
                             selected = paymentMode == "UPI",
                             onClick = { paymentMode = "UPI" },
-                            label = { Text("📱 Bank / UPI") }
+                            label = { Text("📱 बैंक / UPI") }
                         )
                     }
                 }
@@ -4393,7 +3492,7 @@ fun DailyExpensesView(viewModel: ShopViewModel) {
                         showAddDialog = false
                     }
                 }) {
-                    Text("Save")
+                    Text("सेव करें")
                 }
             },
             dismissButton = {
@@ -4481,11 +3580,11 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    Text("Total Supplier Outstanding", color = Color(0xFFFECDD3), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("सप्लायर उधारी (Total Supplier Outstanding)", color = Color(0xFFFECDD3), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("₹${totalDebt.toInt()} Due", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("₹${totalDebt.toInt()} बाकी", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("Total balance payable to suppliers.", color = Color(0xFFFEE2E2), fontSize = 11.sp)
+                    Text("सप्लायर को चुकाई जाने वाली बकाया रकम।", color = Color(0xFFFEE2E2), fontSize = 11.sp)
                 }
             }
         }
@@ -4498,7 +3597,7 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        "No supplier bills added yet.\nIn the Stock screen, tap 'Maal aaya' to record supplier invoices.",
+                        "अभी तक कोई सप्लायर इनवॉइस नहीं जोड़ा गया है।\nगोदाम स्टॉक स्क्रीन में '+ नया माल (बिल अपलोड)' दबाकर सप्लायर का बिल जोड़ें।",
                         modifier = Modifier.padding(16.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 12.sp
@@ -4571,13 +3670,13 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
                         ) {
                             Column {
                                 Text(
-                                    if (trackBoxes) "Total Bill: ₹${purchase.totalAmount.toInt()} (${purchase.totalBoxes} Boxes)"
-                                    else "Total Bill: ₹${purchase.totalAmount.toInt()}",
+                                    if (trackBoxes) "कुल बिल: ₹${purchase.totalAmount.toInt()} (${purchase.totalBoxes} Boxes)"
+                                    else "कुल बिल: ₹${purchase.totalAmount.toInt()}",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 if (!isPaid) {
-                                    Text("Balance: ₹${balance.toInt()} pending", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
+                                    Text("बकाया: ₹${balance.toInt()} बाकी", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
                                 }
                             }
 

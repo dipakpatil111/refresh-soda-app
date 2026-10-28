@@ -1,4 +1,4 @@
-﻿package com.refreshsoda.app.data.model
+package com.refreshsoda.app.data.model
 
 import androidx.room.Entity
 import androidx.room.ColumnInfo

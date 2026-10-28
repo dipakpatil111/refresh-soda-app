@@ -12,6 +12,8 @@ import com.refreshsoda.app.data.security.SecurityUtils
 import com.refreshsoda.app.ui.i18n.AppLanguage
 import com.refreshsoda.app.ui.i18n.AppStrings
 import com.refreshsoda.app.ui.theme.AppThemeMode
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -40,47 +42,6 @@ data class IceCreamProfitStats(
     val marginPercent: Double = 0.0
 )
 
-data class CategoryProfitStat(
-    val category: String,
-    val itemsSold: Int = 0,
-    val totalRevenue: Double = 0.0,
-    val totalCost: Double = 0.0,
-    val grossProfit: Double = 0.0,
-    val marginPercent: Double = 0.0,
-    val percentageOfTotalSales: Double = 0.0,
-    val colorHex: Long = 0xFFEA580CL
-)
-
-data class DayTrendStat(
-    val date: String,
-    val dayLabel: String,
-    val revenue: Double = 0.0,
-    val profit: Double = 0.0,
-    val billsCount: Int = 0
-)
-
-data class TopProductRank(
-    val productName: String,
-    val category: String,
-    val qtySold: Int,
-    val revenue: Double,
-    val profit: Double,
-    val rank: Int
-)
-
-data class OverallShopProfitSummary(
-    val totalRevenue: Double = 0.0,
-    val totalCostOfGoods: Double = 0.0,
-    val grossProfit: Double = 0.0,
-    val grossMarginPercent: Double = 0.0,
-    val totalExpenses: Double = 0.0,
-    val netProfit: Double = 0.0,
-    val todayRevenue: Double = 0.0,
-    val todayProfit: Double = 0.0,
-    val todayExpenses: Double = 0.0,
-    val totalSalesCount: Int = 0
-)
-
 class ShopViewModel(
     private val dao: ShopDao,
     context: Context,
@@ -95,7 +56,7 @@ class ShopViewModel(
     val todayDateString: String = dateFormat.format(Date())
 
     // Language State
-    private val _language = MutableStateFlow(AppLanguage.ENGLISH)
+    private val _language = MutableStateFlow(AppLanguage.HINDI)
     val language = _language.asStateFlow()
 
     fun setLanguage(lang: AppLanguage) {
@@ -185,16 +146,17 @@ class ShopViewModel(
                 val savedUserId = sessionPreferences.getString(sessionUserIdKey, null)
                 if (savedUserId != null) {
                     val user = dao.getUserById(savedUserId)
+                        ?: firebaseSync.findUserById(savedUserId)?.also { dao.insertUser(it) }
                     if (user != null) {
                         if (_currentUser.value == null &&
                             sessionPreferences.getString(sessionUserIdKey, null) == savedUserId
                         ) {
                             _currentUser.value = user
                         }
-                    } else if (sessionPreferences.getString(sessionUserIdKey, null) == savedUserId) {
-                        sessionPreferences.edit().remove(sessionUserIdKey).apply()
                     }
                 }
+            } catch (e: Exception) {
+                e.printStackTrace()
             } finally {
                 _sessionChecked.value = true
             }
@@ -222,6 +184,7 @@ class ShopViewModel(
     // Sale Undo State (Holds last sale for 5-second undo snackbar)
     private val _lastSaleForUndo = MutableStateFlow<SaleTransaction?>(null)
     val lastSaleForUndo = _lastSaleForUndo.asStateFlow()
+    private var saleUndoExpiryJob: Job? = null
 
     // Quick Favourites / Top 8 Products for Fast POS
     val topFavoriteProducts = combine(sales, products) { salesList, productList ->
@@ -410,222 +373,6 @@ class ShopViewModel(
         Pair(topSoda, topIce)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Pair("—", "—"))
 
-    // ---------------- ADVANCED ANALYTICS & CHARTS ----------------
-    private val chartColors = listOf(
-        0xFFEA580CL, // Primary Terracotta Orange
-        0xFF10B981L, // Emerald Green
-        0xFF3B82F6L, // Blue
-        0xFFF59E0BL, // Amber
-        0xFF8B5CF6L, // Purple
-        0xFFEC4899L, // Pink
-        0xFF06B6D4L, // Cyan
-        0xFF6366F1L  // Indigo
-    )
-
-    // Category-wise Sales & Profit breakdown (Which category sells most & profit per category)
-    val categoryPerformanceStats: StateFlow<List<CategoryProfitStat>> = combine(sales, products) { salesList, productList ->
-        val productCostMap = productList.associate { it.name.lowercase(Locale.getDefault()) to it.costPrice }
-
-        class CatAggregator {
-            var itemsSold = 0
-            var revenue = 0.0
-            var cost = 0.0
-        }
-        val aggMap = mutableMapOf<String, CatAggregator>()
-
-        salesList.forEach { sale ->
-            if (sale.itemsDetails.isNotBlank()) {
-                val items = sale.itemsDetails.split(";")
-                items.forEach { itemStr ->
-                    val parts = itemStr.split("|")
-                    if (parts.size >= 4) {
-                        val rawCat = parts[0].trim().ifBlank { "Other" }
-                        val name = parts[1].trim()
-                        val qty = parts[2].toIntOrNull() ?: 1
-                        val price = parts[3].toDoubleOrNull() ?: 0.0
-
-                        val catKey = rawCat.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
-                        val agg = aggMap.getOrPut(catKey) { CatAggregator() }
-                        val lineRev = price * qty
-                        val unitCost = productCostMap[name.lowercase(Locale.getDefault())] ?: 0.0
-                        val lineCost = unitCost * qty
-
-                        agg.itemsSold += qty
-                        agg.revenue += lineRev
-                        agg.cost += lineCost
-                    }
-                }
-            }
-        }
-
-        val totalAllSales = aggMap.values.sumOf { it.revenue }
-        val sortedList = aggMap.entries
-            .map { (cat, agg) ->
-                val grossProfit = agg.revenue - agg.cost
-                val margin = if (agg.revenue > 0) (grossProfit / agg.revenue) * 100.0 else 0.0
-                val share = if (totalAllSales > 0) (agg.revenue / totalAllSales) * 100.0 else 0.0
-                CategoryProfitStat(
-                    category = cat,
-                    itemsSold = agg.itemsSold,
-                    totalRevenue = agg.revenue,
-                    totalCost = agg.cost,
-                    grossProfit = grossProfit,
-                    marginPercent = margin,
-                    percentageOfTotalSales = share
-                )
-            }
-            .sortedByDescending { it.totalRevenue }
-
-        sortedList.mapIndexed { idx, stat ->
-            stat.copy(colorHex = chartColors[idx % chartColors.size])
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    // 7-day sales and profit trend
-    val weeklySalesTrend: StateFlow<List<DayTrendStat>> = combine(sales, products) { salesList, productList ->
-        val productCostMap = productList.associate { it.name.lowercase(Locale.getDefault()) to it.costPrice }
-        val dayLabelFormat = SimpleDateFormat("EEE", Locale.getDefault())
-        val days = mutableListOf<DayTrendStat>()
-
-        // Generate past 7 days (from 6 days ago up to today)
-        for (i in 6 downTo 0) {
-            val c = Calendar.getInstance()
-            c.add(Calendar.DAY_OF_YEAR, -i)
-            val dayDateStr = dateFormat.format(c.time)
-            val dayName = if (i == 0) "Today" else dayLabelFormat.format(c.time)
-
-            val matchingSales = salesList.filter {
-                dateFormat.format(Date(it.timestamp)) == dayDateStr
-            }
-
-            var dayRev = 0.0
-            var dayCost = 0.0
-            matchingSales.forEach { sale ->
-                dayRev += sale.totalAmount
-                if (sale.itemsDetails.isNotBlank()) {
-                    sale.itemsDetails.split(";").forEach { itemStr ->
-                        val parts = itemStr.split("|")
-                        if (parts.size >= 4) {
-                            val name = parts[1].trim()
-                            val qty = parts[2].toIntOrNull() ?: 1
-                            val unitCost = productCostMap[name.lowercase(Locale.getDefault())] ?: 0.0
-                            dayCost += unitCost * qty
-                        }
-                    }
-                }
-            }
-
-            days.add(
-                DayTrendStat(
-                    date = dayDateStr,
-                    dayLabel = dayName,
-                    revenue = dayRev,
-                    profit = (dayRev - dayCost).coerceAtLeast(0.0),
-                    billsCount = matchingSales.size
-                )
-            )
-        }
-        days
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    // Top ranked products (Best sellers with revenue and profit)
-    val topRankedProducts: StateFlow<List<TopProductRank>> = combine(sales, products) { salesList, productList ->
-        val productCostMap = productList.associate { it.name.lowercase(Locale.getDefault()) to it.costPrice }
-
-        class ProductAgg {
-            var category = ""
-            var qty = 0
-            var revenue = 0.0
-            var cost = 0.0
-        }
-        val pMap = mutableMapOf<String, ProductAgg>()
-
-        salesList.forEach { sale ->
-            if (sale.itemsDetails.isNotBlank()) {
-                sale.itemsDetails.split(";").forEach { itemStr ->
-                    val parts = itemStr.split("|")
-                    if (parts.size >= 4) {
-                        val cat = parts[0].trim()
-                        val name = parts[1].trim()
-                        val qty = parts[2].toIntOrNull() ?: 1
-                        val price = parts[3].toDoubleOrNull() ?: 0.0
-
-                        val agg = pMap.getOrPut(name) { ProductAgg().apply { category = cat } }
-                        val unitCost = productCostMap[name.lowercase(Locale.getDefault())] ?: 0.0
-                        agg.qty += qty
-                        agg.revenue += price * qty
-                        agg.cost += unitCost * qty
-                    }
-                }
-            }
-        }
-
-        pMap.entries
-            .sortedByDescending { it.value.qty }
-            .take(10)
-            .mapIndexed { index, (name, agg) ->
-                TopProductRank(
-                    productName = name,
-                    category = agg.category,
-                    qtySold = agg.qty,
-                    revenue = agg.revenue,
-                    profit = (agg.revenue - agg.cost).coerceAtLeast(0.0),
-                    rank = index + 1
-                )
-            }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    // Overall shop profit summary (combining sales, products, expenses)
-    val overallProfitSummary: StateFlow<OverallShopProfitSummary> = combine(sales, products, expenses) { salesList, productList, expensesList ->
-        val productCostMap = productList.associate { it.name.lowercase(Locale.getDefault()) to it.costPrice }
-
-        var totalRev = 0.0
-        var totalCost = 0.0
-        var todayRev = 0.0
-        var todayCost = 0.0
-
-        salesList.forEach { sale ->
-            totalRev += sale.totalAmount
-            val isToday = dateFormat.format(Date(sale.timestamp)) == todayDateString
-            if (isToday) todayRev += sale.totalAmount
-
-            if (sale.itemsDetails.isNotBlank()) {
-                sale.itemsDetails.split(";").forEach { itemStr ->
-                    val parts = itemStr.split("|")
-                    if (parts.size >= 4) {
-                        val name = parts[1].trim()
-                        val qty = parts[2].toIntOrNull() ?: 1
-                        val unitCost = productCostMap[name.lowercase(Locale.getDefault())] ?: 0.0
-                        val lineCost = unitCost * qty
-                        totalCost += lineCost
-                        if (isToday) todayCost += lineCost
-                    }
-                }
-            }
-        }
-
-        val totalExp = expensesList.sumOf { it.amount }
-        val todayExp = expensesList.filter { dateFormat.format(Date(it.timestamp)) == todayDateString }.sumOf { it.amount }
-
-        val grossProfit = totalRev - totalCost
-        val grossMargin = if (totalRev > 0) (grossProfit / totalRev) * 100.0 else 0.0
-        val netProfit = grossProfit - totalExp
-        val todayProfit = (todayRev - todayCost) - todayExp
-
-        OverallShopProfitSummary(
-            totalRevenue = totalRev,
-            totalCostOfGoods = totalCost,
-            grossProfit = grossProfit,
-            grossMarginPercent = grossMargin,
-            totalExpenses = totalExp,
-            netProfit = netProfit,
-            todayRevenue = todayRev,
-            todayProfit = todayProfit,
-            todayExpenses = todayExp,
-            totalSalesCount = salesList.size
-        )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), OverallShopProfitSummary())
-
     // NOTE: Default data seeding is intentionally removed! All categories and items are added by the user!
 
     // ---------------- CATEGORY MANAGEMENT ----------------
@@ -693,72 +440,24 @@ class ShopViewModel(
                 lowStockLimit = lowStockLimit.coerceAtLeast(0)
             )
             dao.insertSubCategory(subCategory)
-            if (subCategory.sealedBoxes > 0) {
-                addVarietyBoxes(
-                    subCategory.categoryName,
-                    subCategory.name,
-                    "Opening stock (unassigned)",
-                    subCategory.sealedBoxes
-                )
-                val openingStock = dao.getIceCreamVarietyStock(
-                    subCategory.categoryName,
-                    subCategory.name,
-                    "Opening stock (unassigned)"
-                )
-                openingStock?.let {
-                    dao.insertIceCreamVarietyStock(it.copy(lowStockLimit = 0))
-                }
-            }
             onAdded?.invoke(subCategory)
         }
     }
 
     fun updateSubCategory(subCategory: SubCategory) {
         viewModelScope.launch {
-            val existing = dao.getSubCategories(subCategory.categoryName).firstOrNull {
-                it.id == subCategory.id
-            }
-            val updatedBoxes = subCategory.sealedBoxes.coerceAtLeast(0)
             dao.insertSubCategory(
                 subCategory.copy(
                     defaultPrice = subCategory.defaultPrice.coerceAtLeast(0.0),
-                    sealedBoxes = updatedBoxes,
+                    sealedBoxes = subCategory.sealedBoxes.coerceAtLeast(0),
                     lowStockLimit = subCategory.lowStockLimit.coerceAtLeast(0)
                 )
             )
-            if (existing != null && existing.sealedBoxes != updatedBoxes) {
-                val unassigned = dao.getIceCreamVarietyStock(
-                    subCategory.categoryName,
-                    subCategory.name,
-                    "Opening stock (unassigned)"
-                )
-                val assignedTotal = dao.getAllIceCreamVarietyStock().first()
-                    .filter {
-                        it.categoryName.equals(subCategory.categoryName, ignoreCase = true) &&
-                            it.companyName.equals(subCategory.name, ignoreCase = true) &&
-                            it.varietyName != "Opening stock (unassigned)"
-                    }
-                    .sumOf { it.sealedBoxes }
-                val newUnassigned = (updatedBoxes - assignedTotal).coerceAtLeast(0)
-                if (newUnassigned > 0) {
-                    dao.insertIceCreamVarietyStock(
-                        (unassigned ?: IceCreamVarietyStock(
-                            categoryName = subCategory.categoryName,
-                            companyName = subCategory.name,
-                            varietyName = "Opening stock (unassigned)",
-                            lowStockLimit = 0
-                        )).copy(sealedBoxes = newUnassigned, lowStockLimit = 0)
-                    )
-                } else if (unassigned != null) {
-                    dao.insertIceCreamVarietyStock(unassigned.copy(sealedBoxes = 0, lowStockLimit = 0))
-                }
-            }
         }
     }
 
     fun deleteSubCategory(subCategory: SubCategory) {
         viewModelScope.launch {
-            dao.deleteIceCreamVarietyStockForCompany(subCategory.categoryName, subCategory.name)
             dao.deleteSubCategory(subCategory)
         }
     }
@@ -945,8 +644,14 @@ class ShopViewModel(
                 itemsDetails = details
             )
             dao.insertSale(sale)
-            firebaseSync.syncSale(sale)
             _lastSaleForUndo.value = sale
+            saleUndoExpiryJob?.cancel()
+            saleUndoExpiryJob = viewModelScope.launch {
+                delay(5_000)
+                if (_lastSaleForUndo.value?.id == sale.id) {
+                    _lastSaleForUndo.value = null
+                }
+            }
 
             // If Udhaar sale, update or create Khata
             if (paymentMode == "UDHAR" && !customerName.isNullOrBlank()) {
@@ -965,47 +670,7 @@ class ShopViewModel(
             }
 
             clearCart()
-        }
-    }
-
-    fun recordDirectSale(
-        category: String,
-        itemName: String,
-        amount: Double,
-        paymentMode: String,
-        customerName: String? = null
-    ) {
-        if (amount <= 0.0) return
-        viewModelScope.launch {
-            val cat = category.ifBlank { "General" }
-            val item = itemName.ifBlank { "Sale" }
-            val sale = SaleTransaction(
-                id = UUID.randomUUID().toString(),
-                totalAmount = amount,
-                discountAmount = 0.0,
-                paymentMode = paymentMode,
-                customerName = customerName,
-                itemsSummary = "$item ($cat) x1",
-                itemsDetails = "$cat|$item|1|$amount"
-            )
-            dao.insertSale(sale)
             firebaseSync.syncSale(sale)
-            _lastSaleForUndo.value = sale
-
-            if (paymentMode == "UDHAR" && !customerName.isNullOrBlank()) {
-                val existing = khataList.value.find { it.name.equals(customerName.trim(), ignoreCase = true) }
-                if (existing != null) {
-                    dao.addDebt(existing.name, amount)
-                } else {
-                    val newKhata = CustomerKhata(
-                        id = UUID.randomUUID().toString(),
-                        name = customerName.trim(),
-                        outstandingDebt = amount
-                    )
-                    dao.insertOrUpdateKhata(newKhata)
-                    firebaseSync.syncKhata(newKhata)
-                }
-            }
         }
     }
 
@@ -1024,6 +689,11 @@ class ShopViewModel(
 
     fun undoLastSale(onUndone: (String) -> Unit) {
         val sale = _lastSaleForUndo.value ?: return
+        if (System.currentTimeMillis() - sale.timestamp > 5_000) {
+            _lastSaleForUndo.value = null
+            return
+        }
+        saleUndoExpiryJob?.cancel()
         viewModelScope.launch {
             dao.deleteSale(sale)
             if (sale.paymentMode == "UDHAR" && !sale.customerName.isNullOrBlank()) {
@@ -1151,15 +821,41 @@ class ShopViewModel(
         count: Int
     ) {
         val existing = dao.getIceCreamVarietyStock(categoryName, companyName, varietyName)
+        val defaultLimit = categories.value.firstOrNull {
+            it.name.equals(categoryName, ignoreCase = true)
+        }?.lowStockLimit ?: 2
         dao.insertIceCreamVarietyStock(
             existing?.copy(sealedBoxes = (existing.sealedBoxes + count).coerceAtLeast(0))
                 ?: IceCreamVarietyStock(
                     categoryName = categoryName,
                     companyName = companyName,
                     varietyName = varietyName.trim(),
-                    sealedBoxes = count.coerceAtLeast(0)
+                    sealedBoxes = count.coerceAtLeast(0),
+                    lowStockLimit = defaultLimit
                 )
         )
+    }
+
+    fun addIceCreamVarietyBoxes(categoryName: String, companyName: String, varietyName: String, count: Int) {
+        val cleanVarietyName = varietyName.trim()
+        if (count <= 0 || cleanVarietyName.isBlank()) return
+        viewModelScope.launch {
+            val category = categories.value.firstOrNull {
+                it.trackBoxes && it.name.equals(categoryName, ignoreCase = true)
+            } ?: return@launch
+            val company = dao.getSubCategories(category.name).firstOrNull {
+                it.name.equals(companyName, ignoreCase = true)
+            } ?: return@launch
+            addVarietyBoxes(category.name, company.name, cleanVarietyName, count)
+            dao.addSubCategoryBoxes(company.id, count)
+            dao.insertAuditLog(
+                AuditLog(
+                    id = UUID.randomUUID().toString(),
+                    action = "STOCK_ADDED",
+                    details = "$count Boxes added: ${company.name} • $cleanVarietyName"
+                )
+            )
+        }
     }
 
     fun updateIceCreamVarietyStock(stock: IceCreamVarietyStock, sealedBoxes: Int, lowStockLimit: Int) {
@@ -1169,38 +865,17 @@ class ShopViewModel(
                 stock.companyName,
                 stock.varietyName
             )
-            val currentBoxes = current?.sealedBoxes ?: 0
-            val updatedBoxes = sealedBoxes.coerceAtLeast(0)
-            dao.insertIceCreamVarietyStock(
-                stock.copy(
-                    sealedBoxes = updatedBoxes,
-                    lowStockLimit = lowStockLimit.coerceAtLeast(0)
-                )
+            val oldBoxes = current?.sealedBoxes ?: 0
+            val updated = stock.copy(
+                sealedBoxes = sealedBoxes.coerceAtLeast(0),
+                lowStockLimit = lowStockLimit.coerceAtLeast(0)
             )
+            dao.insertIceCreamVarietyStock(updated)
             dao.getSubCategories(stock.categoryName).firstOrNull {
                 it.name.equals(stock.companyName, ignoreCase = true)
             }?.let { company ->
-                dao.adjustSubCategoryBoxes(company.id, updatedBoxes - currentBoxes)
+                dao.adjustSubCategoryBoxes(company.id, updated.sealedBoxes - oldBoxes)
             }
-        }
-    }
-
-    fun addIceCreamVarietyBoxes(categoryName: String, companyName: String, varietyName: String, count: Int) {
-        val cleanedVariety = varietyName.trim()
-        if (count <= 0 || cleanedVariety.isBlank()) return
-        viewModelScope.launch {
-            val company = dao.getSubCategories(categoryName).firstOrNull {
-                it.name.equals(companyName, ignoreCase = true)
-            } ?: return@launch
-            addVarietyBoxes(categoryName, company.name, cleanedVariety, count)
-            dao.addSubCategoryBoxes(company.id, count)
-            dao.insertAuditLog(
-                AuditLog(
-                    id = UUID.randomUUID().toString(),
-                    action = "STOCK_ADDED",
-                    details = "$count Boxes added: $companyName • $cleanedVariety"
-                )
-            )
         }
     }
 
@@ -1221,7 +896,7 @@ class ShopViewModel(
                 AuditLog(
                     id = UUID.randomUUID().toString(),
                     action = "BOX_OPENED",
-                    details = "-1 Box opened: ${stock.companyName} • ${stock.varietyName}"
+                    details = "Opened box: ${stock.companyName} • ${stock.varietyName}"
                 )
             )
         }
@@ -1488,7 +1163,23 @@ _Report generated by Refresh Soda App_
                 onResult(false, getString("err_fill_all"))
                 return@launch
             }
-            val user = dao.getUserByEmailOrPhone(identifier.trim())
+            val isPhoneIdentifier = identifier.trim().all {
+                it.isDigit() || it in "+-(). "
+            }
+            val normalizedDigits = identifier.filter(Char::isDigit).takeLast(10)
+            val localUser = dao.getUserByEmailOrPhone(identifier.trim())
+                ?: if (isPhoneIdentifier && normalizedDigits.length == 10) {
+                    dao.getUserByPhoneLastTenDigits(normalizedDigits)
+                } else {
+                    null
+                }
+            val user = localUser ?: try {
+                firebaseSync.findUserByEmailOrPhone(identifier.trim())
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onResult(false, "Login could not connect to account backup. Check your internet and try again.")
+                return@launch
+            }
             if (user == null) {
                 onResult(false, getString("err_user_not_found"))
                 return@launch
@@ -1497,9 +1188,14 @@ _Report generated by Refresh Soda App_
                 onResult(false, getString("err_wrong_password"))
                 return@launch
             }
+            if (localUser == null) {
+                dao.insertUser(user)
+            }
             // Auto upgrade legacy plain password to secure SHA-256 hash
             if (user.password == pass) {
-                dao.insertUser(user.copy(password = SecurityUtils.hashPassword(pass)))
+                val upgradedUser = user.copy(password = SecurityUtils.hashPassword(pass))
+                dao.insertUser(upgradedUser)
+                firebaseSync.syncUserToCloud(upgradedUser)
             }
             dao.updateLastLogin(user.id, System.currentTimeMillis())
             _currentUser.value = user
@@ -1690,10 +1386,10 @@ _Report generated by Refresh Soda App_
                 .filter { it.name.isNotBlank() && it.boxes > 0 }
                 .groupBy { it.name.trim().lowercase(Locale.getDefault()) }
                 .values
-                .forEach { varietyItems ->
-                    val representative = varietyItems.first()
-                    val quantity = varietyItems.sumOf { it.boxes }
-                    addVarietyBoxes(categoryName, company.name, representative.name, quantity)
+                .forEach { items ->
+                    val varietyName = items.first().name.trim()
+                    val boxes = items.sumOf { it.boxes }
+                    addVarietyBoxes(categoryName, company.name, varietyName, boxes)
                 }
 
             dao.insertAuditLog(
