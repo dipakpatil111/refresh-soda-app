@@ -125,121 +125,119 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         bottomBar = {
-                            if (currentScreen != Screen.POS) {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.surface,
-                                    tonalElevation = 6.dp,
-                                    shadowElevation = 8.dp
+                            Surface(
+                                color = MaterialTheme.colorScheme.surface,
+                                tonalElevation = 6.dp,
+                                shadowElevation = 8.dp
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .navigationBarsPadding()
+                                        .height(60.dp)
+                                        .padding(horizontal = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceAround
                                 ) {
-                                    Row(
+                                    // 1. Home
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
                                         modifier = Modifier
-                                            .fillMaxWidth()
-                                            .navigationBarsPadding()
-                                            .height(60.dp)
-                                            .padding(horizontal = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceAround
+                                            .clickable { currentScreen = Screen.Dashboard }
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
                                     ) {
-                                        // 1. Home
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            modifier = Modifier
-                                                .clickable { currentScreen = Screen.Dashboard }
-                                                .padding(horizontal = 10.dp, vertical = 4.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Home,
-                                                contentDescription = "Home",
-                                                tint = if (currentScreen == Screen.Dashboard) Color(0xFF366A55) else Color(0xFF94A3B8),
-                                                modifier = Modifier.size(22.dp)
-                                            )
-                                            Text(
-                                                "Home",
-                                                fontSize = 10.sp,
-                                                fontWeight = if (currentScreen == Screen.Dashboard) FontWeight.Bold else FontWeight.Medium,
-                                                color = if (currentScreen == Screen.Dashboard) Color(0xFF366A55) else Color(0xFF94A3B8)
-                                            )
-                                        }
+                                        Icon(
+                                            imageVector = Icons.Default.Home,
+                                            contentDescription = "Home",
+                                            tint = if (currentScreen == Screen.Dashboard) Color(0xFF366A55) else Color(0xFF94A3B8),
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                        Text(
+                                            "Home",
+                                            fontSize = 10.sp,
+                                            fontWeight = if (currentScreen == Screen.Dashboard) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (currentScreen == Screen.Dashboard) Color(0xFF366A55) else Color(0xFF94A3B8)
+                                        )
+                                    }
 
-                                        // 2. Stock
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            modifier = Modifier
-                                                .clickable { currentScreen = Screen.Inventory }
-                                                .padding(horizontal = 10.dp, vertical = 4.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Inventory2,
-                                                contentDescription = "Stock",
-                                                tint = if (currentScreen == Screen.Inventory) Color(0xFF366A55) else Color(0xFF94A3B8),
-                                                modifier = Modifier.size(22.dp)
-                                            )
-                                            Text(
-                                                "Stock",
-                                                fontSize = 10.sp,
-                                                fontWeight = if (currentScreen == Screen.Inventory) FontWeight.Bold else FontWeight.Medium,
-                                                color = if (currentScreen == Screen.Inventory) Color(0xFF366A55) else Color(0xFF94A3B8)
-                                            )
-                                        }
+                                    // 2. Stock
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier
+                                            .clickable { currentScreen = Screen.Inventory }
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Inventory2,
+                                            contentDescription = "Stock",
+                                            tint = if (currentScreen == Screen.Inventory) Color(0xFF366A55) else Color(0xFF94A3B8),
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                        Text(
+                                            "Stock",
+                                            fontSize = 10.sp,
+                                            fontWeight = if (currentScreen == Screen.Inventory) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (currentScreen == Screen.Inventory) Color(0xFF366A55) else Color(0xFF94A3B8)
+                                        )
+                                    }
 
-                                        // 3. Center FAB (+)
-                                        Box(
-                                            modifier = Modifier
-                                                .size(46.dp)
-                                                .clip(CircleShape)
-                                                .background(Color(0xFFF5C7A9))
-                                                .clickable { currentScreen = Screen.POS },
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Add,
-                                                contentDescription = "New Sale",
-                                                tint = Color(0xFF1E293B),
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
+                                    // 3. Center FAB (+) - POS Sale
+                                    Box(
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .clip(CircleShape)
+                                            .background(if (currentScreen == Screen.POS) Color(0xFF366A55) else Color(0xFFF5C7A9))
+                                            .clickable { currentScreen = Screen.POS },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Add,
+                                            contentDescription = "New Sale",
+                                            tint = if (currentScreen == Screen.POS) Color.White else Color(0xFF1E293B),
+                                            modifier = Modifier.size(26.dp)
+                                        )
+                                    }
 
-                                        // 4. Udhaar
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            modifier = Modifier
-                                                .clickable { currentScreen = Screen.Khata }
-                                                .padding(horizontal = 10.dp, vertical = 4.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.MenuBook,
-                                                contentDescription = "Udhaar",
-                                                tint = if (currentScreen == Screen.Khata) Color(0xFF366A55) else Color(0xFF94A3B8),
-                                                modifier = Modifier.size(22.dp)
-                                            )
-                                            Text(
-                                                "Udhaar",
-                                                fontSize = 10.sp,
-                                                fontWeight = if (currentScreen == Screen.Khata) FontWeight.Bold else FontWeight.Medium,
-                                                color = if (currentScreen == Screen.Khata) Color(0xFF366A55) else Color(0xFF94A3B8)
-                                            )
-                                        }
+                                    // 4. Udhaar
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier
+                                            .clickable { currentScreen = Screen.Khata }
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.MenuBook,
+                                            contentDescription = "Udhaar",
+                                            tint = if (currentScreen == Screen.Khata) Color(0xFF366A55) else Color(0xFF94A3B8),
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                        Text(
+                                            "Udhaar",
+                                            fontSize = 10.sp,
+                                            fontWeight = if (currentScreen == Screen.Khata) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (currentScreen == Screen.Khata) Color(0xFF366A55) else Color(0xFF94A3B8)
+                                        )
+                                    }
 
-                                        // 5. Hisaab
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            modifier = Modifier
-                                                .clickable { currentScreen = Screen.Hisaab }
-                                                .padding(horizontal = 10.dp, vertical = 4.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.AccountBalanceWallet,
-                                                contentDescription = "Hisaab",
-                                                tint = if (currentScreen == Screen.Hisaab) Color(0xFF366A55) else Color(0xFF94A3B8),
-                                                modifier = Modifier.size(22.dp)
-                                            )
-                                            Text(
-                                                "Hisaab",
-                                                fontSize = 10.sp,
-                                                fontWeight = if (currentScreen == Screen.Hisaab) FontWeight.Bold else FontWeight.Medium,
-                                                color = if (currentScreen == Screen.Hisaab) Color(0xFF366A55) else Color(0xFF94A3B8)
-                                            )
-                                        }
+                                    // 5. Hisaab
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier
+                                            .clickable { currentScreen = Screen.Hisaab }
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.AccountBalanceWallet,
+                                            contentDescription = "Hisaab",
+                                            tint = if (currentScreen == Screen.Hisaab) Color(0xFF366A55) else Color(0xFF94A3B8),
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                        Text(
+                                            "Hisaab",
+                                            fontSize = 10.sp,
+                                            fontWeight = if (currentScreen == Screen.Hisaab) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (currentScreen == Screen.Hisaab) Color(0xFF366A55) else Color(0xFF94A3B8)
+                                        )
                                     }
                                 }
                             }
