@@ -1,4 +1,4 @@
-package com.refreshsoda.app.data.local
+﻿package com.refreshsoda.app.data.local
 
 import androidx.room.*
 import com.refreshsoda.app.data.model.*
@@ -52,11 +52,40 @@ interface ShopDao {
     @Query("UPDATE sub_categories SET sealedBoxes = sealedBoxes + :count WHERE id = :id")
     suspend fun addSubCategoryBoxes(id: String, count: Int)
 
+    @Query("UPDATE sub_categories SET sealedBoxes = MAX(0, sealedBoxes + :delta) WHERE id = :id")
+    suspend fun adjustSubCategoryBoxes(id: String, delta: Int)
+
     @Query("UPDATE sub_categories SET sealedBoxes = CASE WHEN sealedBoxes > 0 THEN sealedBoxes - 1 ELSE 0 END WHERE id = :id")
     suspend fun openSubCategoryBox(id: String)
 
     @Query("UPDATE sub_categories SET sealedBoxes = 0 WHERE LOWER(categoryName) = LOWER(:categoryName)")
     suspend fun clearSubCategoryBoxes(categoryName: String)
+
+    @Query("SELECT * FROM ice_cream_variety_stock ORDER BY categoryName, companyName, varietyName")
+    fun getAllIceCreamVarietyStock(): Flow<List<IceCreamVarietyStock>>
+
+    @Query("""
+        SELECT * FROM ice_cream_variety_stock
+        WHERE LOWER(categoryName) = LOWER(:categoryName)
+          AND LOWER(companyName) = LOWER(:companyName)
+          AND LOWER(varietyName) = LOWER(:varietyName)
+        LIMIT 1
+    """)
+    suspend fun getIceCreamVarietyStock(
+        categoryName: String,
+        companyName: String,
+        varietyName: String
+    ): IceCreamVarietyStock?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertIceCreamVarietyStock(stock: IceCreamVarietyStock)
+
+    @Query("""
+        DELETE FROM ice_cream_variety_stock
+        WHERE LOWER(categoryName) = LOWER(:categoryName)
+          AND LOWER(companyName) = LOWER(:companyName)
+    """)
+    suspend fun deleteIceCreamVarietyStockForCompany(categoryName: String, companyName: String)
 
     @Delete
     suspend fun deleteSubCategory(subCategory: SubCategory)

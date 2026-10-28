@@ -1,4 +1,4 @@
-package com.refreshsoda.app.data.security
+﻿package com.refreshsoda.app.data.security
 
 import java.security.MessageDigest
 

@@ -25,6 +25,7 @@ import com.refreshsoda.app.ui.viewmodel.ShopViewModelFactory
 enum class Screen(val titleKey: String, val icon: ImageVector) {
     Dashboard("tab_dashboard", Icons.Default.Dashboard),
     POS("tab_pos", Icons.Default.PointOfSale),
+    Analytics("tab_analytics", Icons.Default.InsertChart),
     Inventory("tab_stock", Icons.Default.Inventory2),
     Khata("tab_khata", Icons.Default.MenuBook),
     Hisaab("tab_hisaab", Icons.Default.AccountBalanceWallet),
@@ -138,10 +139,14 @@ class MainActivity : ComponentActivity() {
                             )
                         },
                         bottomBar = {
-                            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                            NavigationBar(
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                tonalElevation = 3.dp
+                            ) {
                                 val bottomTabs = listOf(
                                     Screen.Dashboard,
                                     Screen.POS,
+                                    Screen.Analytics,
                                     Screen.Inventory,
                                     Screen.Khata,
                                     Screen.Hisaab
@@ -152,7 +157,7 @@ class MainActivity : ComponentActivity() {
                                         selected = currentScreen == screen,
                                         onClick = { currentScreen = screen },
                                         icon = { Icon(screen.icon, contentDescription = labelText) },
-                                        label = { Text(labelText, fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                                        label = { Text(labelText, fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1) },
                                         colors = NavigationBarItemDefaults.colors(
                                             selectedIconColor = MaterialTheme.colorScheme.primary,
                                             selectedTextColor = MaterialTheme.colorScheme.primary,
@@ -170,9 +175,11 @@ class MainActivity : ComponentActivity() {
                             when (currentScreen) {
                                 Screen.Dashboard -> DashboardScreen(
                                     viewModel = viewModel,
-                                    onNavigateToPOS = { currentScreen = Screen.POS }
+                                    onNavigateToPOS = { currentScreen = Screen.POS },
+                                    onNavigateToAnalytics = { currentScreen = Screen.Analytics }
                                 )
                                 Screen.POS -> POSScreen(viewModel = viewModel)
+                                Screen.Analytics -> AnalyticsScreen(viewModel = viewModel)
                                 Screen.Inventory -> InventoryScreen(viewModel = viewModel)
                                 Screen.Khata -> KhataScreen(viewModel = viewModel)
                                 Screen.Hisaab -> HisaabScreen(

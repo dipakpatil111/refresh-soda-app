@@ -1,4 +1,4 @@
-package com.refreshsoda.app.data.model
+﻿package com.refreshsoda.app.data.model
 
 import androidx.room.Entity
 import androidx.room.ColumnInfo
@@ -39,6 +39,20 @@ data class SubCategory(
     val name: String,
     @ColumnInfo(defaultValue = "0")
     val defaultPrice: Double = 0.0,
+    @ColumnInfo(defaultValue = "0")
+    val sealedBoxes: Int = 0,
+    @ColumnInfo(defaultValue = "2")
+    val lowStockLimit: Int = 2
+)
+
+@Entity(
+    tableName = "ice_cream_variety_stock",
+    primaryKeys = ["categoryName", "companyName", "varietyName"]
+)
+data class IceCreamVarietyStock(
+    val categoryName: String,
+    val companyName: String,
+    val varietyName: String,
     @ColumnInfo(defaultValue = "0")
     val sealedBoxes: Int = 0,
     @ColumnInfo(defaultValue = "2")

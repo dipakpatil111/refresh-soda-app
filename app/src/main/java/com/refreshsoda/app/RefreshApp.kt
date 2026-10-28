@@ -1,4 +1,4 @@
-package com.refreshsoda.app
+﻿package com.refreshsoda.app
 
 import android.app.Application
 import com.refreshsoda.app.data.local.AppDatabase

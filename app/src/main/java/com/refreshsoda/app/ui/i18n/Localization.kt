@@ -631,6 +631,56 @@ object AppStrings {
             AppLanguage.HINDI to "माल गोदाम में जुड़ गया और सप्लायर बिल सेव हुआ!",
             AppLanguage.ENGLISH to "Inward stock added and invoice recorded successfully!",
             AppLanguage.MARATHI to "माल गोदामात जोडला गेला आणि पुरवठादार बिल जतन केले!"
+        ),
+        "tab_analytics" to mapOf(
+            AppLanguage.HINDI to "चार्ट व मुनाफ़ा",
+            AppLanguage.ENGLISH to "Analytics",
+            AppLanguage.MARATHI to "आलेख व नफा"
+        ),
+        "analytics_title" to mapOf(
+            AppLanguage.HINDI to "मुनाफ़ा और चार्ट विश्लेषण",
+            AppLanguage.ENGLISH to "Sales & Profit Analytics",
+            AppLanguage.MARATHI to "विक्री आणि नफा विश्लेषण"
+        ),
+        "chart_category_sales" to mapOf(
+            AppLanguage.HINDI to "कौनसी कैटेगरी ज़्यादा बिकती है",
+            AppLanguage.ENGLISH to "Top Selling Categories",
+            AppLanguage.MARATHI to "कोणती श्रेणी जास्त खपते"
+        ),
+        "chart_weekly_trend" to mapOf(
+            AppLanguage.HINDI to "7 दिनों की बिक्री और मुनाफ़ा ग्राफ़",
+            AppLanguage.ENGLISH to "7-Day Sales & Profit Trend",
+            AppLanguage.MARATHI to "7 दिवसांची विक्री आणि नफा आलेख"
+        ),
+        "top_selling_products" to mapOf(
+            AppLanguage.HINDI to "सबसे ज़्यादा बिकने वाले 5 आइटम",
+            AppLanguage.ENGLISH to "Top 5 Selling Items",
+            AppLanguage.MARATHI to "सर्वाधिक विकले जाणारे 5 आयटम"
+        ),
+        "cogs_label" to mapOf(
+            AppLanguage.HINDI to "माल की खरीद लागत (Cost)",
+            AppLanguage.ENGLISH to "Cost of Goods (COGS)",
+            AppLanguage.MARATHI to "खरेदी खर्च (Cost)"
+        ),
+        "confirm_sale" to mapOf(
+            AppLanguage.HINDI to "Confirm Sale (बिल कन्फर्म)",
+            AppLanguage.ENGLISH to "Confirm Sale",
+            AppLanguage.MARATHI to "Confirm Sale (बिल निश्चिती)"
+        ),
+        "billing_items" to mapOf(
+            AppLanguage.HINDI to "बिलिंग आइटम्स",
+            AppLanguage.ENGLISH to "Billing Items",
+            AppLanguage.MARATHI to "बिलिंग आयटम"
+        ),
+        "save_sale_btn" to mapOf(
+            AppLanguage.HINDI to "Save Item / बिल सेव करें",
+            AppLanguage.ENGLISH to "Save Item / Complete Sale",
+            AppLanguage.MARATHI to "Save Item / बिल सेव्ह करा"
+        ),
+        "add_discount_btn" to mapOf(
+            AppLanguage.HINDI to "+ Add Discount",
+            AppLanguage.ENGLISH to "+ Add Discount",
+            AppLanguage.MARATHI to "+ Discount जोडा"
         )
     )
 

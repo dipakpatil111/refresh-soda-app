@@ -1,4 +1,4 @@
-package com.refreshsoda.app.data.firebase
+﻿package com.refreshsoda.app.data.firebase
 
 import com.google.firebase.firestore.FirebaseFirestore
 import com.refreshsoda.app.data.model.*

@@ -1,4 +1,4 @@
-package com.refreshsoda.app.data.local
+﻿package com.refreshsoda.app.data.local
 
 import android.content.Context
 import androidx.room.Database
@@ -14,6 +14,7 @@ import com.refreshsoda.app.data.model.*
         UserProfile::class,
         ProductCategory::class,
         SubCategory::class,
+        IceCreamVarietyStock::class,
         Product::class,
         SaleTransaction::class,
         CustomerKhata::class,
@@ -25,7 +26,7 @@ import com.refreshsoda.app.data.model.*
         UserAccount::class,
         SupplierPurchase::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -183,6 +184,33 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `ice_cream_variety_stock` (
+                        `categoryName` TEXT NOT NULL,
+                        `companyName` TEXT NOT NULL,
+                        `varietyName` TEXT NOT NULL,
+                        `sealedBoxes` INTEGER NOT NULL DEFAULT 0,
+                        `lowStockLimit` INTEGER NOT NULL DEFAULT 2,
+                        PRIMARY KEY(`categoryName`, `companyName`, `varietyName`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO `ice_cream_variety_stock`
+                        (`categoryName`, `companyName`, `varietyName`, `sealedBoxes`, `lowStockLimit`)
+                    SELECT s.`categoryName`, s.`name`, 'Opening stock (unassigned)', s.`sealedBoxes`, 0
+                    FROM `sub_categories` s
+                    JOIN `categories` c ON LOWER(c.`name`) = LOWER(s.`categoryName`)
+                    WHERE c.`trackBoxes` = 1 AND s.`sealedBoxes` > 0
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -198,7 +226,8 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_5_6,
                     MIGRATION_4_6,
                     MIGRATION_6_7,
-                    MIGRATION_7_8
+                    MIGRATION_7_8,
+                    MIGRATION_8_9
                 )
                 .fallbackToDestructiveMigrationOnDowngrade()
                 .build()
