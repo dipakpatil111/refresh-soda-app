@@ -1338,58 +1338,60 @@ fun POSScreen(viewModel: ShopViewModel) {
         Spacer(modifier = Modifier.height(6.dp))
 
         // CATEGORY BAR & ACTION BUTTONS
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            item {
+                FilterChip(
+                    selected = selectedCategoryName == "All",
+                    onClick = { selectedCategoryName = "All" },
+                    label = { Text("All", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                )
+            }
+            items(categories) { cat ->
+                FilterChip(
+                    selected = selectedCategoryName == cat.name,
+                    onClick = { selectedCategoryName = cat.name },
+                    label = { Text(cat.name, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                item {
-                    FilterChip(
-                        selected = selectedCategoryName == "All",
-                        onClick = { selectedCategoryName = "All" },
-                        label = { Text("All", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                    )
-                }
-                items(categories) { cat ->
-                    FilterChip(
-                        selected = selectedCategoryName == cat.name,
-                        onClick = { selectedCategoryName = cat.name },
-                        label = { Text(cat.name, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                    )
-                }
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 FilledTonalButton(
                     onClick = { showSmartImportDialog = true },
+                    modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(3.dp))
-                    Text("Import", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("Import", fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                 }
 
                 FilledTonalButton(
                     onClick = { showAddCategoryDialog = true },
+                    modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text("+ Cat", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("+ Cat", fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                 }
 
                 Button(
                     onClick = { showAddProductDialog = true },
+                    modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text("+ Item", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("+ Item", fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                 }
-            }
         }
 
         Spacer(modifier = Modifier.height(6.dp))

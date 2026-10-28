@@ -43,6 +43,7 @@ class MainActivity : ComponentActivity() {
             val themeMode by viewModel.themeMode.collectAsState()
             val userProfile by viewModel.userProfile.collectAsState()
             val currentUser by viewModel.currentUser.collectAsState()
+            val sessionChecked by viewModel.sessionChecked.collectAsState()
             var currentScreen by remember { mutableStateOf(Screen.Dashboard) }
             var showLogoutDialog by remember { mutableStateOf(false) }
             var showExitDialog by remember { mutableStateOf(false) }
@@ -56,7 +57,9 @@ class MainActivity : ComponentActivity() {
             }
 
             RefreshSodaTheme(themeMode = themeMode) {
-                if (currentUser == null) {
+                if (!sessionChecked) {
+                    Box(modifier = Modifier.fillMaxSize())
+                } else if (currentUser == null) {
                     AuthScreen(
                         viewModel = viewModel,
                         onLoginSuccess = { currentScreen = Screen.Dashboard }

@@ -118,6 +118,8 @@ class ShopViewModel(
     val allUsers = dao.getAllUsers().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     private val _currentUser = MutableStateFlow<UserAccount?>(null)
     val currentUser = _currentUser.asStateFlow()
+    private val _sessionChecked = MutableStateFlow(false)
+    val sessionChecked = _sessionChecked.asStateFlow()
     val subCategories = dao.getAllSubCategories().stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
@@ -126,16 +128,22 @@ class ShopViewModel(
 
     init {
         viewModelScope.launch {
-            val savedUserId = sessionPreferences.getString(sessionUserIdKey, null) ?: return@launch
-            val user = dao.getUserById(savedUserId)
-            if (user != null) {
-                if (_currentUser.value == null &&
-                    sessionPreferences.getString(sessionUserIdKey, null) == savedUserId
-                ) {
-                    _currentUser.value = user
+            try {
+                val savedUserId = sessionPreferences.getString(sessionUserIdKey, null)
+                if (savedUserId != null) {
+                    val user = dao.getUserById(savedUserId)
+                    if (user != null) {
+                        if (_currentUser.value == null &&
+                            sessionPreferences.getString(sessionUserIdKey, null) == savedUserId
+                        ) {
+                            _currentUser.value = user
+                        }
+                    } else if (sessionPreferences.getString(sessionUserIdKey, null) == savedUserId) {
+                        sessionPreferences.edit().remove(sessionUserIdKey).apply()
+                    }
                 }
-            } else if (sessionPreferences.getString(sessionUserIdKey, null) == savedUserId) {
-                sessionPreferences.edit().remove(sessionUserIdKey).apply()
+            } finally {
+                _sessionChecked.value = true
             }
         }
     }
