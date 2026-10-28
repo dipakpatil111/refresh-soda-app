@@ -25,7 +25,7 @@ import com.refreshsoda.app.data.model.*
         UserAccount::class,
         SupplierPurchase::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -129,6 +129,60 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `sub_categories` ADD COLUMN `sealedBoxes` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `sub_categories` ADD COLUMN `lowStockLimit` INTEGER NOT NULL DEFAULT 2")
+                db.execSQL("UPDATE `categories` SET `trackBoxes` = CASE WHEN LOWER(`name`) LIKE '%ice%' THEN 1 ELSE 0 END")
+                db.execSQL(
+                    "UPDATE `products` SET `sealedBoxes` = 0 WHERE LOWER(`category`) IN " +
+                        "(SELECT LOWER(`name`) FROM `categories` WHERE `trackBoxes` = 0)"
+                )
+                db.execSQL(
+                    """
+                    UPDATE `sub_categories`
+                    SET `sealedBoxes` = `sealedBoxes` + COALESCE((
+                        SELECT SUM(p.`sealedBoxes`)
+                        FROM `products` p
+                        JOIN `categories` c ON LOWER(c.`name`) = LOWER(p.`category`)
+                        WHERE c.`trackBoxes` = 1
+                          AND LOWER(c.`name`) = LOWER(`sub_categories`.`categoryName`)
+                          AND LOWER(trim(p.`brand`)) = LOWER(trim(`sub_categories`.`name`))
+                    ), 0)
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO `sub_categories` (`id`, `categoryName`, `name`, `defaultPrice`, `sealedBoxes`, `lowStockLimit`)
+                    SELECT lower(hex(randomblob(16))), c.`name`, trim(p.`brand`), 0, SUM(p.`sealedBoxes`), 2
+                    FROM `products` p
+                    JOIN `categories` c ON LOWER(c.`name`) = LOWER(p.`category`)
+                    WHERE c.`trackBoxes` = 1 AND trim(p.`brand`) != ''
+                      AND NOT EXISTS (
+                          SELECT 1 FROM `sub_categories` s
+                          WHERE LOWER(s.`categoryName`) = LOWER(c.`name`)
+                            AND LOWER(s.`name`) = LOWER(trim(p.`brand`))
+                      )
+                    GROUP BY c.`name`, LOWER(trim(p.`brand`))
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO `sub_categories` (`id`, `categoryName`, `name`, `defaultPrice`, `sealedBoxes`, `lowStockLimit`)
+                    SELECT lower(hex(randomblob(16))), c.`name`, trim(b.`name`), 0, 0, 2
+                    FROM `brands` b
+                    CROSS JOIN `categories` c
+                    WHERE c.`trackBoxes` = 1 AND trim(b.`name`) != ''
+                      AND NOT EXISTS (
+                          SELECT 1 FROM `sub_categories` s
+                          WHERE LOWER(s.`categoryName`) = LOWER(c.`name`)
+                            AND LOWER(s.`name`) = LOWER(trim(b.`name`))
+                      )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -143,7 +197,8 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_4_5,
                     MIGRATION_5_6,
                     MIGRATION_4_6,
-                    MIGRATION_6_7
+                    MIGRATION_6_7,
+                    MIGRATION_7_8
                 )
                 .fallbackToDestructiveMigrationOnDowngrade()
                 .build()

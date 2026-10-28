@@ -34,6 +34,7 @@ import com.refreshsoda.app.data.model.CustomerKhata
 import com.refreshsoda.app.data.model.DraftProductItem
 import com.refreshsoda.app.data.model.Expense
 import com.refreshsoda.app.data.model.Product
+import com.refreshsoda.app.data.model.SubCategory
 import com.refreshsoda.app.data.model.SaleTransaction
 import com.refreshsoda.app.data.model.UserAccount
 import com.refreshsoda.app.data.model.SupplierPurchase
@@ -613,6 +614,7 @@ fun DashboardScreen(
     val topItem by viewModel.topItem.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val products by viewModel.products.collectAsState()
+    val subCategories by viewModel.subCategories.collectAsState()
     val sales by viewModel.sales.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
     val topSodaIce by viewModel.topSodaAndIceCream.collectAsState()
@@ -622,13 +624,11 @@ fun DashboardScreen(
     var showOpenBoxDialog by remember { mutableStateOf(false) }
     var selectedSaleForReceipt by remember { mutableStateOf<SaleTransaction?>(null) }
 
-    val boxTrackedProducts = products.filter { product ->
-        categories.firstOrNull { it.name.equals(product.category, ignoreCase = true) }?.trackBoxes ?: true
+    val boxTrackedSubCategories = subCategories.filter { subCategory ->
+        categories.any { it.trackBoxes && it.name.equals(subCategory.categoryName, ignoreCase = true) }
     }
-    val lowStockItems = boxTrackedProducts.filter { product ->
-        product.sealedBoxes <= (product.lowStockLimit
-            ?: categories.firstOrNull { it.name.equals(product.category, ignoreCase = true) }?.lowStockLimit
-            ?: 2)
+    val lowStockItems = boxTrackedSubCategories.filter { subCategory ->
+        subCategory.sealedBoxes <= subCategory.lowStockLimit
     }
     LazyColumn(
         modifier = Modifier
@@ -742,13 +742,13 @@ fun DashboardScreen(
                     Text(viewModel.getString("inward_stock_btn"), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
 
-                if (boxTrackedProducts.isNotEmpty()) {
+                if (boxTrackedSubCategories.isNotEmpty()) {
                     Button(
                         onClick = { showOpenBoxDialog = true },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.weight(1f),
-                        enabled = boxTrackedProducts.any { it.sealedBoxes > 0 }
+                        enabled = boxTrackedSubCategories.any { it.sealedBoxes > 0 }
                     ) {
                         Icon(Icons.Default.Inventory, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
@@ -775,11 +775,8 @@ fun DashboardScreen(
                         }
                         Spacer(modifier = Modifier.height(6.dp))
                         lowStockItems.take(6).forEach { prod ->
-                            val limit = prod.lowStockLimit
-                                ?: categories.firstOrNull { it.name.equals(prod.category, ignoreCase = true) }?.lowStockLimit
-                                ?: 2
                             Text(
-                                "• ${prod.name}: only ${prod.sealedBoxes} box left (limit $limit).",
+                                "• ${prod.name}: only ${prod.sealedBoxes} box left (limit ${prod.lowStockLimit}).",
                                 color = if (prod.sealedBoxes == 0) Color(0xFF991B1B) else Color(0xFF92400E),
                                 fontSize = 12.sp,
                                 fontWeight = if (prod.sealedBoxes == 0) FontWeight.Bold else FontWeight.Normal
@@ -882,7 +879,7 @@ fun DashboardScreen(
         }
 
         // GODOWN BOX STATUS
-        if (boxTrackedProducts.isNotEmpty()) {
+        if (boxTrackedSubCategories.isNotEmpty()) {
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -890,40 +887,29 @@ fun DashboardScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(viewModel.getString("godown_box_status"), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    val totalBoxes = boxTrackedProducts.sumOf { it.sealedBoxes }
+                    val totalBoxes = boxTrackedSubCategories.sumOf { it.sealedBoxes }
                     Text("Total: $totalBoxes Box", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 }
             }
             item {
-                val brandList = boxTrackedProducts.map { if (it.brand.isNotBlank()) it.brand else it.category }.distinct()
                 LazyRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(brandList) { brandName ->
-                        val brandProducts = boxTrackedProducts.filter {
-                            it.brand == brandName || (it.brand.isBlank() && it.category == brandName)
-                        }
-                        val brandBoxes = brandProducts.sumOf { it.sealedBoxes }
-                        val isLowStock = brandProducts.any { product ->
-                            val limit = product.lowStockLimit
-                                ?: categories.firstOrNull { it.name.equals(product.category, ignoreCase = true) }?.lowStockLimit
-                                ?: 2
-                            product.sealedBoxes <= limit
-                        }
+                    items(boxTrackedSubCategories) { subCategory ->
                         Card(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.width(115.dp)
                         ) {
                             Column(modifier = Modifier.padding(10.dp)) {
-                                Text(brandName, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                                Text(subCategory.name, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    "$brandBoxes Box",
+                                    "${subCategory.sealedBoxes} Box",
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = if (isLowStock) Color(0xFFDC2626) else MaterialTheme.colorScheme.primary
+                                    color = if (subCategory.sealedBoxes <= subCategory.lowStockLimit) Color(0xFFDC2626) else MaterialTheme.colorScheme.primary
                                 )
                             }
                         }
@@ -994,8 +980,8 @@ fun DashboardScreen(
         }
     }
 
-    if (showAddStockDialog && boxTrackedProducts.isNotEmpty()) {
-    var selectedProduct by remember { mutableStateOf(boxTrackedProducts.first()) }
+    if (showAddStockDialog && boxTrackedSubCategories.isNotEmpty()) {
+    var selectedProduct by remember { mutableStateOf(boxTrackedSubCategories.first()) }
         var boxCountText by remember { mutableStateOf("5") }
 
         AlertDialog(
@@ -1005,11 +991,11 @@ fun DashboardScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Select Product:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(boxTrackedProducts) { prod ->
+                        items(boxTrackedSubCategories) { prod ->
                             FilterChip(
                                 selected = selectedProduct.id == prod.id,
                                 onClick = { selectedProduct = prod },
-                                label = { Text("${prod.name} (${prod.category})", fontSize = 11.sp) }
+                                label = { Text("${prod.name} (${prod.categoryName})", fontSize = 11.sp) }
                             )
                         }
                     }
@@ -1025,7 +1011,7 @@ fun DashboardScreen(
                 Button(onClick = {
                     val count = boxCountText.toIntOrNull() ?: 0
                     if (count > 0) {
-                        viewModel.addBoxes(selectedProduct.id, selectedProduct.name, count)
+                        viewModel.addSubCategoryBoxes(selectedProduct, count)
                         showAddStockDialog = false
                     }
                 }) {
@@ -1039,7 +1025,7 @@ fun DashboardScreen(
     }
 
     if (showOpenBoxDialog) {
-        val availableProducts = boxTrackedProducts.filter { it.sealedBoxes > 0 }
+        val availableProducts = boxTrackedSubCategories.filter { it.sealedBoxes > 0 }
         var selectedProduct by remember { mutableStateOf(availableProducts.firstOrNull()) }
 
         AlertDialog(
@@ -1062,7 +1048,7 @@ fun DashboardScreen(
             confirmButton = {
                 Button(onClick = {
                     if (selectedProduct != null) {
-                        viewModel.openBox(selectedProduct!!.id, selectedProduct!!.name)
+                        viewModel.openSubCategoryBox(selectedProduct!!)
                         showOpenBoxDialog = false
                     }
                 }) {
@@ -1088,6 +1074,7 @@ fun POSScreen(viewModel: ShopViewModel) {
     val context = LocalContext.current
     val categories by viewModel.categories.collectAsState()
     val products by viewModel.products.collectAsState()
+    val subCategories by viewModel.subCategories.collectAsState()
     val cart by viewModel.cart.collectAsState()
     val khataList by viewModel.khataList.collectAsState()
     val discount by viewModel.discount.collectAsState()
@@ -1106,6 +1093,8 @@ fun POSScreen(viewModel: ShopViewModel) {
     }
 
     var selectedCategoryName by remember { mutableStateOf("All") }
+    var selectedCompany by remember { mutableStateOf<SubCategory?>(null) }
+    var companyAmountText by remember { mutableStateOf("") }
     var showAddCategoryDialog by remember { mutableStateOf(false) }
     var showAddProductDialog by remember { mutableStateOf(false) }
     var showSmartImportDialog by remember { mutableStateOf(false) }
@@ -1115,6 +1104,21 @@ fun POSScreen(viewModel: ShopViewModel) {
 
     val rawTotal = cart.sumOf { it.total }
     val finalTotal = (rawTotal - discount).coerceAtLeast(0.0)
+    val itemModeProducts = products.filter { product ->
+        categories.none { it.trackBoxes && it.name.equals(product.category, ignoreCase = true) }
+    }
+    val itemModeFavorites = topFavorites.filter { product ->
+        categories.none { it.trackBoxes && it.name.equals(product.category, ignoreCase = true) }
+    }
+    val selectedCategoryIsIceCream = categories.firstOrNull {
+        it.name.equals(selectedCategoryName, ignoreCase = true)
+    }?.trackBoxes == true
+    val selectedItemFavorites = itemModeFavorites.filter { product ->
+        selectedCategoryName == "All" || product.category.equals(selectedCategoryName, ignoreCase = true)
+    }
+    val selectedItemProducts = itemModeProducts.filter { product ->
+        selectedCategoryName == "All" || product.category.equals(selectedCategoryName, ignoreCase = true)
+    }
 
     Column(
         modifier = Modifier
@@ -1302,8 +1306,10 @@ fun POSScreen(viewModel: ShopViewModel) {
         }
 
         // TOP 8 FAVOURITES (QUICK 1-TAP COUNTER)
-        if (topFavorites.isNotEmpty() || products.isNotEmpty()) {
-            val favsToShow = if (topFavorites.isNotEmpty()) topFavorites.take(8) else products.take(6)
+        if (!selectedCategoryIsIceCream &&
+            (selectedItemFavorites.isNotEmpty() || selectedItemProducts.isNotEmpty())
+        ) {
+            val favsToShow = if (selectedItemFavorites.isNotEmpty()) selectedItemFavorites.take(8) else selectedItemProducts.take(6)
             Spacer(modifier = Modifier.height(4.dp))
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
@@ -1345,14 +1351,22 @@ fun POSScreen(viewModel: ShopViewModel) {
             item {
                 FilterChip(
                     selected = selectedCategoryName == "All",
-                    onClick = { selectedCategoryName = "All" },
+                    onClick = {
+                        selectedCategoryName = "All"
+                        selectedCompany = null
+                        companyAmountText = ""
+                    },
                     label = { Text("All", fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                 )
             }
             items(categories) { cat ->
                 FilterChip(
                     selected = selectedCategoryName == cat.name,
-                    onClick = { selectedCategoryName = cat.name },
+                    onClick = {
+                        selectedCategoryName = cat.name
+                        selectedCompany = null
+                        companyAmountText = ""
+                    },
                     label = { Text(cat.name, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                 )
             }
@@ -1435,53 +1449,130 @@ fun POSScreen(viewModel: ShopViewModel) {
                 }
             }
         } else {
-            val filtered = if (selectedCategoryName == "All") products else products.filter { it.category.equals(selectedCategoryName, ignoreCase = true) }
-
-            if (filtered.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize().padding(top = 40.dp),
-                    contentAlignment = Alignment.TopCenter
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("No items in this category yet.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Button(onClick = { showAddProductDialog = true }) {
-                            Text("+ Add Item Here")
+            val companyCategories = categories.filter { category ->
+                category.trackBoxes &&
+                    (selectedCategoryName == "All" || category.name.equals(selectedCategoryName, ignoreCase = true))
+            }
+            val itemProducts = selectedItemProducts
+            Column(modifier = Modifier.fillMaxSize()) {
+                companyCategories.forEach { category ->
+                    val companies = subCategories.filter {
+                        it.categoryName.equals(category.name, ignoreCase = true)
+                    }
+                    Text(
+                        "${category.name} • Company",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+                    if (companies.isEmpty()) {
+                        Text(
+                            "Add companies in category management.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(companies) { company ->
+                                FilterChip(
+                                    selected = selectedCompany?.id == company.id,
+                                    onClick = {
+                                        selectedCompany = company
+                                        companyAmountText = company.defaultPrice
+                                            .takeIf { it > 0.0 }
+                                            ?.toString()
+                                            .orEmpty()
+                                    },
+                                    label = { Text(company.name, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                                )
+                            }
                         }
                     }
                 }
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(filtered) { product ->
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(98.dp)
-                                .clickable { viewModel.addToCart(product) },
-                            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+
+                selectedCompany?.let { company ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = companyAmountText,
+                            onValueChange = { companyAmountText = it },
+                            label = { Text("Amount (₹)") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Button(
+                            onClick = {
+                                val amount = companyAmountText.toDoubleOrNull()
+                                if (amount != null && amount > 0) {
+                                    viewModel.addToCart(
+                                        Product(
+                                            id = "company-${company.id}-${UUID.randomUUID()}",
+                                            name = company.name,
+                                            category = company.categoryName,
+                                            brand = company.name,
+                                            price = amount
+                                        )
+                                    )
+                                    selectedCompany = null
+                                    companyAmountText = ""
+                                }
+                            },
+                            enabled = companyAmountText.toDoubleOrNull()?.let { it > 0 } == true
+                        ) { Text("Add to cart") }
+                    }
+                }
+
+                if (itemProducts.isEmpty()) {
+                    if (companyCategories.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxSize().padding(top = 40.dp),
+                            contentAlignment = Alignment.TopCenter
                         ) {
-                            Column(
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("No items in this category yet.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                if (selectedCategoryName != "All" &&
+                                    categories.firstOrNull { it.name.equals(selectedCategoryName, ignoreCase = true) }?.trackBoxes != true
+                                ) {
+                                    Button(onClick = { showAddProductDialog = true }) { Text("+ Add Item Here") }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        items(itemProducts) { product ->
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                shape = RoundedCornerShape(14.dp),
                                 modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(8.dp),
-                                verticalArrangement = Arrangement.SpaceBetween,
-                                horizontalAlignment = Alignment.CenterHorizontally
+                                    .fillMaxWidth()
+                                    .height(98.dp)
+                                    .clickable { viewModel.addToCart(product) },
+                                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                             ) {
-                                Text(
-                                    if (product.brand.isNotBlank()) product.brand.uppercase() else product.category.uppercase(),
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1
-                                )
-                                Text(product.name, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, textAlign = TextAlign.Center)
-                                Text("₹${product.price.toInt()}", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                                Column(
+                                    modifier = Modifier.fillMaxSize().padding(8.dp),
+                                    verticalArrangement = Arrangement.SpaceBetween,
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        product.category.uppercase(),
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1
+                                    )
+                                    Text(product.name, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, textAlign = TextAlign.Center)
+                                    Text("₹${product.price.toInt()}", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                                }
                             }
                         }
                     }
@@ -1530,20 +1621,25 @@ fun POSScreen(viewModel: ShopViewModel) {
 
     if (showAddProductDialog) {
         var name by remember { mutableStateOf("") }
-        var category by remember { mutableStateOf(if (selectedCategoryName != "All") selectedCategoryName else categories.firstOrNull()?.name.orEmpty()) }
-        var brand by remember { mutableStateOf("") }
+        var category by remember {
+            mutableStateOf(
+                if (selectedCategoryName != "All") selectedCategoryName
+                else categories.firstOrNull { !it.trackBoxes }?.name.orEmpty()
+            )
+        }
         var priceText by remember { mutableStateOf("") }
-        var boxText by remember { mutableStateOf("0") }
-        var productLimitText by remember { mutableStateOf("") }
         val trackBoxes = categories.firstOrNull {
             it.name.equals(category, ignoreCase = true)
-        }?.trackBoxes ?: true
+        }?.trackBoxes ?: false
 
         AlertDialog(
             onDismissRequest = { showAddProductDialog = false },
             title = { Text(viewModel.getString("add_item_btn"), fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (trackBoxes) {
+                        Text("Add an ice-cream company in category management instead of adding an item.")
+                    }
                     Text("Select Category:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     if (categories.isEmpty()) {
                         OutlinedTextField(
@@ -1576,40 +1672,19 @@ fun POSScreen(viewModel: ShopViewModel) {
                         label = { Text("Selling Rate (₹)") },
                         singleLine = true
                     )
-                    OutlinedTextField(
-                        value = brand,
-                        onValueChange = { brand = it },
-                        label = { Text("Brand (optional)") },
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = productLimitText,
-                        onValueChange = { if (it.isEmpty() || it.all(Char::isDigit)) productLimitText = it },
-                        label = { Text("Low stock limit (optional)") },
-                        singleLine = true
-                    )
-                    if (trackBoxes) {
-                        OutlinedTextField(
-                            value = boxText,
-                            onValueChange = { boxText = it },
-                            label = { Text("Sealed Godown Boxes") },
-                            singleLine = true
-                        )
-                    }
                 }
             },
             confirmButton = {
                 Button(onClick = {
                     val p = priceText.toDoubleOrNull() ?: 0.0
-                    val b = if (trackBoxes) boxText.toIntOrNull() ?: 0 else 0
-                    if (name.isNotBlank() && category.isNotBlank() && p > 0 && b >= 0) {
+                    if (!trackBoxes && name.isNotBlank() && category.isNotBlank() && p > 0) {
                         if (categories.none { it.name.equals(category.trim(), ignoreCase = true) }) {
                             viewModel.addCategory(category.trim())
                         }
-                        viewModel.addProduct(name, category, brand, p, b, productLimitText.toIntOrNull())
+                        viewModel.addProduct(name, category, "", p, 0, null)
                         showAddProductDialog = false
                     }
-                }) {
+                }, enabled = !trackBoxes) {
                     Text("Save Item")
                 }
             },
@@ -2022,7 +2097,7 @@ fun SmartBulkImportDialog(
                                         )
                                         Text(
                                             "Brand: ${item.brand.ifBlank { "—" }}" +
-                                                if (categories.firstOrNull { it.name.equals(item.category, ignoreCase = true) }?.trackBoxes != false) {
+                                                if (categories.firstOrNull { it.name.equals(item.category, ignoreCase = true) }?.trackBoxes == true) {
                                                     " • Boxes: ${item.sealedBoxes}"
                                                 } else {
                                                     ""
@@ -2084,8 +2159,8 @@ fun InwardBillDialog(
 ) {
     val context = LocalContext.current
     val categories by viewModel.categories.collectAsState()
-    val brands by viewModel.brands.collectAsState()
     val subCategories by viewModel.subCategories.collectAsState()
+    val inwardCategories = categories.filter { it.trackBoxes }
 
     var selectedBrand by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("") }
@@ -2096,14 +2171,24 @@ fun InwardBillDialog(
     var paidAmountText by remember { mutableStateOf("") }
     var customBillText by remember { mutableStateOf("") }
     var showPasteSection by remember { mutableStateOf(false) }
-    var showNewCategoryDialog by remember { mutableStateOf(false) }
-    var newCategoryName by remember { mutableStateOf("") }
+    var showAddCompany by remember { mutableStateOf(false) }
+    var newCompanyName by remember { mutableStateOf("") }
     var addGstToCost by remember { mutableStateOf(false) }
 
     val draftItems = remember { mutableStateListOf<InwardBillItemDraft>() }
     val lineAmountTexts = remember { mutableStateMapOf<String, String>() }
 
     var isScanning by remember { mutableStateOf(false) }
+
+    LaunchedEffect(inwardCategories) {
+        if (inwardCategories.none { it.name.equals(selectedCategory, ignoreCase = true) }) {
+            selectedCategory = inwardCategories.firstOrNull()?.name.orEmpty()
+        }
+    }
+
+    val categoryCompanies = subCategories.filter {
+        it.categoryName.equals(selectedCategory, ignoreCase = true)
+    }
 
     fun appendParsedInvoice(parsed: BillScannerService.ParsedInvoiceData) {
         draftItems.addAll(parsed.items)
@@ -2120,7 +2205,7 @@ fun InwardBillDialog(
             BillScannerService.scanInvoiceImage(
                 context,
                 uri,
-                subCategories.map { it.name },
+                categoryCompanies.map { it.name },
                 addGstToCost
             ) { success, _, parsed ->
                 isScanning = false
@@ -2136,7 +2221,7 @@ fun InwardBillDialog(
 
     val trackBoxes = categories.firstOrNull {
         it.name.equals(selectedCategory, ignoreCase = true)
-    }?.trackBoxes ?: true
+    }?.trackBoxes ?: false
     val totalBoxes = if (trackBoxes) draftItems.sumOf { it.boxes.toLong() } else 0L
     val totalCost = draftItems.sumOf { draft ->
         lineAmountTexts[draft.id]?.toDoubleOrNull()
@@ -2165,32 +2250,33 @@ fun InwardBillDialog(
                     .heightIn(max = 520.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // 1. BRAND SELECTOR
+                // 1. COMPANY SELECTOR
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        OutlinedTextField(
-                            value = selectedBrand,
-                            onValueChange = { selectedBrand = it },
-                            label = { Text(viewModel.getString("select_brand_label")) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        if (brands.isNotEmpty()) {
+                        Text("Ice-cream company", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        if (inwardCategories.isEmpty()) {
+                            Text("Create an ice-cream type in category management first.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                        } else if (categoryCompanies.isEmpty()) {
+                            Text("No company yet, add one.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                        } else {
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                items(brands) { brand ->
+                                items(categoryCompanies) { company ->
                                     FilterChip(
-                                        selected = selectedBrand.equals(brand.name, ignoreCase = true),
-                                        onClick = { selectedBrand = brand.name },
-                                        label = { Text(brand.name, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                                        selected = selectedBrand.equals(company.name, ignoreCase = true),
+                                        onClick = { selectedBrand = company.name },
+                                        label = { Text(company.name, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                                     )
                                 }
                             }
                         }
+                        if (inwardCategories.isNotEmpty()) {
+                            TextButton(onClick = { showAddCompany = true }) { Text("+ Add company") }
+                        }
                     }
                 }
 
-                // 2. CATEGORY SELECTOR
-                item {
+                // 2. ICE-CREAM CATEGORY SELECTOR
+                if (inwardCategories.size > 1) item {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
                             viewModel.getString("select_category_label"),
@@ -2203,16 +2289,16 @@ fun InwardBillDialog(
                                 modifier = Modifier.weight(1f),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                items(categories) { category ->
+                                items(inwardCategories) { category ->
                                     FilterChip(
                                         selected = selectedCategory.equals(category.name, ignoreCase = true),
-                                        onClick = { selectedCategory = category.name },
+                                        onClick = {
+                                            selectedCategory = category.name
+                                            selectedBrand = ""
+                                        },
                                         label = { Text(category.name, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                                     )
                                 }
-                            }
-                            TextButton(onClick = { showNewCategoryDialog = true }) {
-                                Text("+ New", fontSize = 11.sp)
                             }
                         }
                     }
@@ -2539,8 +2625,8 @@ fun InwardBillDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (selectedBrand.isBlank() || selectedCategory.isBlank()) {
-                        Toast.makeText(context, "Enter a supplier and choose or add a category.", Toast.LENGTH_SHORT).show()
+                    if (selectedBrand.isBlank() || selectedCategory.isBlank() || !trackBoxes) {
+                        Toast.makeText(context, "Choose an ice-cream company and category.", Toast.LENGTH_SHORT).show()
                         return@Button
                     }
                     if (draftItems.isEmpty() || draftItems.any {
@@ -2580,7 +2666,7 @@ fun InwardBillDialog(
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A))
             ) {
-                Text(if (trackBoxes) "Save Inward Stock & Update Boxes" else "Save Inward Purchase")
+                Text("Save Inward Stock & Update Company Boxes")
             }
         },
         dismissButton = {
@@ -2588,37 +2674,36 @@ fun InwardBillDialog(
         }
     )
 
-    if (showNewCategoryDialog) {
+    if (showAddCompany) {
         AlertDialog(
-            onDismissRequest = { showNewCategoryDialog = false },
-            title = { Text("Add category") },
+            onDismissRequest = { showAddCompany = false },
+            title = { Text("Add ice-cream company") },
             text = {
                 OutlinedTextField(
-                    value = newCategoryName,
-                    onValueChange = { newCategoryName = it },
-                    label = { Text("Category name") },
+                    value = newCompanyName,
+                    onValueChange = { newCompanyName = it },
+                    label = { Text("Company name") },
                     singleLine = true
                 )
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        val categoryName = newCategoryName.trim()
-                        if (categoryName.isNotBlank()) {
-                            viewModel.addCategory(categoryName)
-                            selectedCategory = categoryName
-                            newCategoryName = ""
-                            showNewCategoryDialog = false
+                        val companyName = newCompanyName.trim()
+                        if (companyName.isNotBlank() && selectedCategory.isNotBlank()) {
+                            viewModel.addSubCategory(selectedCategory, companyName, 0.0) {
+                                selectedBrand = it.name
+                                newCompanyName = ""
+                                showAddCompany = false
+                            }
                         }
                     },
-                    enabled = newCategoryName.isNotBlank()
+                    enabled = newCompanyName.isNotBlank() && selectedCategory.isNotBlank()
                 ) {
-                    Text("Save")
+                    Text("Add company")
                 }
             },
-            dismissButton = {
-                TextButton(onClick = { showNewCategoryDialog = false }) { Text("Cancel") }
-            }
+            dismissButton = { TextButton(onClick = { showAddCompany = false }) { Text("Cancel") } }
         )
     }
 }
@@ -2628,24 +2713,24 @@ fun InwardBillDialog(
 // ==============================================================================
 @Composable
 fun InventoryScreen(viewModel: ShopViewModel) {
-    val products by viewModel.products.collectAsState()
     val categories by viewModel.categories.collectAsState()
+    val subCategories by viewModel.subCategories.collectAsState()
     val iceCreamProfit by viewModel.iceCreamProfitStats.collectAsState()
 
     var selectedFilter by remember { mutableStateOf("All") }
     var showAddStockDialog by remember { mutableStateOf(false) }
     var showInwardDialog by remember { mutableStateOf(false) }
 
-    val boxTrackedProducts = products.filter { product ->
-        categories.firstOrNull { it.name.equals(product.category, ignoreCase = true) }?.trackBoxes ?: true
+    val boxTrackedSubCategories = subCategories.filter { subCategory ->
+        categories.any { it.trackBoxes && it.name.equals(subCategory.categoryName, ignoreCase = true) }
     }
     val filterOptions = listOf("All") + categories.filter { it.trackBoxes }.map { it.name }
     val filtered = if (selectedFilter == "All") {
-        boxTrackedProducts
+        boxTrackedSubCategories
     } else {
-        boxTrackedProducts.filter { it.category.equals(selectedFilter, ignoreCase = true) }
+        boxTrackedSubCategories.filter { it.categoryName.equals(selectedFilter, ignoreCase = true) }
     }
-    val totalBoxes = boxTrackedProducts.sumOf { it.sealedBoxes }
+    val totalBoxes = boxTrackedSubCategories.sumOf { it.sealedBoxes }
 
     LazyColumn(
         modifier = Modifier
@@ -2720,7 +2805,7 @@ fun InventoryScreen(viewModel: ShopViewModel) {
             }
         }
 
-        if (boxTrackedProducts.isNotEmpty()) item {
+        if (boxTrackedSubCategories.isNotEmpty()) item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
                 shape = RoundedCornerShape(18.dp),
@@ -2751,7 +2836,7 @@ fun InventoryScreen(viewModel: ShopViewModel) {
                         )
                     }
                 }
-                if (boxTrackedProducts.isNotEmpty()) {
+                if (boxTrackedSubCategories.isNotEmpty()) {
                     Button(
                         onClick = { showAddStockDialog = true },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
@@ -2770,13 +2855,13 @@ fun InventoryScreen(viewModel: ShopViewModel) {
             }
         } else {
             items(filtered) { item ->
-                val categoryLimit = categories.firstOrNull {
-                    it.name.equals(item.category, ignoreCase = true)
-                }?.lowStockLimit ?: 2
-                val limit = item.lowStockLimit ?: categoryLimit
+                val limit = item.lowStockLimit
                 val isLowStock = item.sealedBoxes <= limit
                 var limitText by remember(item.id, item.lowStockLimit) {
-                    mutableStateOf(item.lowStockLimit?.toString().orEmpty())
+                    mutableStateOf(item.lowStockLimit.toString())
+                }
+                var boxesText by remember(item.id, item.sealedBoxes) {
+                    mutableStateOf(item.sealedBoxes.toString())
                 }
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -2789,7 +2874,7 @@ fun InventoryScreen(viewModel: ShopViewModel) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(item.category.uppercase(), fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(item.categoryName.uppercase(), fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(item.name, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 if (isLowStock) {
@@ -2819,30 +2904,41 @@ fun InventoryScreen(viewModel: ShopViewModel) {
                                     fontWeight = if (item.sealedBoxes == 0) FontWeight.Bold else FontWeight.Normal
                                 )
                             }
-                            OutlinedTextField(
-                                value = limitText,
-                                onValueChange = { value ->
-                                    if (value.isEmpty() || value.all(Char::isDigit)) {
-                                        limitText = value
-                                    }
-                                },
-                                label = { Text("Low stock limit (optional)") },
-                                supportingText = { Text("Category default: $categoryLimit") },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                OutlinedTextField(
+                                    value = boxesText,
+                                    onValueChange = { value ->
+                                        if (value.isEmpty() || value.all(Char::isDigit)) boxesText = value
+                                    },
+                                    label = { Text("Boxes") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = limitText,
+                                    onValueChange = { value ->
+                                        if (value.isEmpty() || value.all(Char::isDigit)) limitText = value
+                                    },
+                                    label = { Text("Low stock limit") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
                             TextButton(
                                 onClick = {
-                                    viewModel.updateProduct(item.copy(lowStockLimit = limitText.toIntOrNull()))
+                                    viewModel.updateSubCategory(
+                                        item.copy(
+                                            sealedBoxes = boxesText.toIntOrNull() ?: item.sealedBoxes,
+                                            lowStockLimit = limitText.toIntOrNull() ?: item.lowStockLimit
+                                        )
+                                    )
                                 }
-                            ) {
-                                Text("Save limit")
-                            }
+                            ) { Text("Save stock and limit") }
                         }
 
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Button(
-                                onClick = { viewModel.addBoxes(item.id, item.name, 1) },
+                                onClick = { viewModel.addSubCategoryBoxes(item, 1) },
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
                                 shape = RoundedCornerShape(8.dp),
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
@@ -2851,7 +2947,7 @@ fun InventoryScreen(viewModel: ShopViewModel) {
                             }
 
                             Button(
-                                onClick = { viewModel.openBox(item.id, item.name) },
+                                onClick = { viewModel.openSubCategoryBox(item) },
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                                 shape = RoundedCornerShape(8.dp),
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
@@ -2866,8 +2962,8 @@ fun InventoryScreen(viewModel: ShopViewModel) {
         }
     }
 
-    if (showAddStockDialog && boxTrackedProducts.isNotEmpty()) {
-        var selectedProduct by remember { mutableStateOf(boxTrackedProducts.first()) }
+    if (showAddStockDialog && boxTrackedSubCategories.isNotEmpty()) {
+        var selectedProduct by remember { mutableStateOf(boxTrackedSubCategories.first()) }
         var boxCountText by remember { mutableStateOf("5") }
 
         AlertDialog(
@@ -2877,11 +2973,11 @@ fun InventoryScreen(viewModel: ShopViewModel) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Select Product:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(boxTrackedProducts) { prod ->
+                        items(boxTrackedSubCategories) { prod ->
                             FilterChip(
                                 selected = selectedProduct.id == prod.id,
                                 onClick = { selectedProduct = prod },
-                                label = { Text("${prod.name} (${prod.category})", fontSize = 11.sp) }
+                                label = { Text("${prod.name} (${prod.categoryName})", fontSize = 11.sp) }
                             )
                         }
                     }
@@ -2897,7 +2993,7 @@ fun InventoryScreen(viewModel: ShopViewModel) {
                 Button(onClick = {
                     val count = boxCountText.toIntOrNull() ?: 0
                     if (count > 0) {
-                        viewModel.addBoxes(selectedProduct.id, selectedProduct.name, count)
+                        viewModel.addSubCategoryBoxes(selectedProduct, count)
                         showAddStockDialog = false
                     }
                 }) {
@@ -3579,7 +3675,7 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
                 val balance = purchase.totalAmount - purchase.paidAmount
                 val trackBoxes = categories.firstOrNull {
                     it.name.equals(purchase.category, ignoreCase = true)
-                }?.trackBoxes ?: true
+                }?.trackBoxes ?: false
 
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -3727,9 +3823,9 @@ fun MenuAndCategoryManagementView(viewModel: ShopViewModel) {
         } else {
             items(categories) { cat ->
                 val count = products.count { it.category.equals(cat.name, ignoreCase = true) }
-                var limitText by remember(cat.id, cat.lowStockLimit) { mutableStateOf(cat.lowStockLimit.toString()) }
                 var subCategoryName by remember(cat.id) { mutableStateOf("") }
-                var subCategoryPrice by remember(cat.id) { mutableStateOf("") }
+                var subCategoryBoxes by remember(cat.id) { mutableStateOf("0") }
+                var subCategoryLimit by remember(cat.id) { mutableStateOf("2") }
                 val categorySubCategories = subCategories.filter {
                     it.categoryName.equals(cat.name, ignoreCase = true)
                 }
@@ -3749,18 +3845,24 @@ fun MenuAndCategoryManagementView(viewModel: ShopViewModel) {
                         ) {
                             Column {
                                 Text(cat.name, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                Text("$count items attached", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    if (cat.trackBoxes) "${categorySubCategories.size} companies" else "$count items attached",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                FilledTonalButton(
-                                    onClick = {
-                                        selectedCatForProduct = cat.name
-                                        showAddProductDialog = true
-                                    },
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Text("+ Item", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                if (!cat.trackBoxes) {
+                                    FilledTonalButton(
+                                        onClick = {
+                                            selectedCatForProduct = cat.name
+                                            showAddProductDialog = true
+                                        },
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text("+ Item", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                                 IconButton(onClick = { viewModel.deleteCategory(cat) }) {
                                     Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = Color(0xFFDC2626))
@@ -3772,74 +3874,108 @@ fun MenuAndCategoryManagementView(viewModel: ShopViewModel) {
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Track boxes", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                            Text("Ice-cream type (company + box stock)", fontSize = 12.sp, fontWeight = FontWeight.Medium)
                             Switch(
                                 checked = cat.trackBoxes,
                                 onCheckedChange = { viewModel.updateCategory(cat.copy(trackBoxes = it)) }
                             )
                         }
-                        OutlinedTextField(
-                            value = limitText,
-                            onValueChange = { value ->
-                                if (value.all(Char::isDigit)) {
-                                    limitText = value
-                                    value.toIntOrNull()?.let { viewModel.updateCategory(cat.copy(lowStockLimit = it)) }
+                        Text(if (cat.trackBoxes) "Companies" else "Items (managed below)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        if (cat.trackBoxes) {
+                            categorySubCategories.forEach { subCategory ->
+                                var boxesText by remember(subCategory.id, subCategory.sealedBoxes) {
+                                    mutableStateOf(subCategory.sealedBoxes.toString())
                                 }
-                            },
-                            label = { Text("Low stock limit") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Text("Sub-categories", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        categorySubCategories.forEach { subCategory ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    "${subCategory.name}${if (subCategory.defaultPrice > 0) " • ₹${subCategory.defaultPrice.toInt()}" else ""}",
-                                    modifier = Modifier.weight(1f),
-                                    fontSize = 12.sp
-                                )
-                                IconButton(onClick = { viewModel.deleteSubCategory(subCategory) }) {
-                                    Icon(Icons.Default.DeleteOutline, contentDescription = "Delete sub-category", tint = Color(0xFFDC2626))
+                                var limitText by remember(subCategory.id, subCategory.lowStockLimit) {
+                                    mutableStateOf(subCategory.lowStockLimit.toString())
+                                }
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            "${subCategory.name} • ${subCategory.sealedBoxes} box (limit ${subCategory.lowStockLimit})",
+                                            modifier = Modifier.weight(1f),
+                                            fontSize = 12.sp
+                                        )
+                                        IconButton(onClick = { viewModel.deleteSubCategory(subCategory) }) {
+                                            Icon(Icons.Default.DeleteOutline, contentDescription = "Delete company", tint = Color(0xFFDC2626))
+                                        }
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        OutlinedTextField(
+                                            value = boxesText,
+                                            onValueChange = { if (it.isEmpty() || it.all(Char::isDigit)) boxesText = it },
+                                            label = { Text("Current boxes") },
+                                            singleLine = true,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        OutlinedTextField(
+                                            value = limitText,
+                                            onValueChange = { if (it.isEmpty() || it.all(Char::isDigit)) limitText = it },
+                                            label = { Text("Low stock limit") },
+                                            singleLine = true,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        TextButton(onClick = {
+                                            viewModel.updateSubCategory(
+                                                subCategory.copy(
+                                                    sealedBoxes = boxesText.toIntOrNull() ?: subCategory.sealedBoxes,
+                                                    lowStockLimit = limitText.toIntOrNull() ?: subCategory.lowStockLimit
+                                                )
+                                            )
+                                        }) { Text("Save") }
+                                    }
                                 }
                             }
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            OutlinedTextField(
-                                value = subCategoryName,
-                                onValueChange = { subCategoryName = it },
-                                label = { Text("Sub-category name") },
-                                singleLine = true,
-                                modifier = Modifier.weight(1f)
-                            )
-                            OutlinedTextField(
-                                value = subCategoryPrice,
-                                onValueChange = { subCategoryPrice = it },
-                                label = { Text("Default price (optional)") },
-                                singleLine = true,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                        TextButton(
-                            onClick = {
-                                viewModel.addSubCategory(
-                                    cat.name,
-                                    subCategoryName,
-                                    subCategoryPrice.toDoubleOrNull() ?: 0.0
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedTextField(
+                                    value = subCategoryName,
+                                    onValueChange = { subCategoryName = it },
+                                    label = { Text("Company name") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
                                 )
-                                subCategoryName = ""
-                                subCategoryPrice = ""
-                            },
-                            enabled = subCategoryName.isNotBlank()
-                        ) {
-                            Text("+ Add sub-category")
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                OutlinedTextField(
+                                    value = subCategoryBoxes,
+                                    onValueChange = { if (it.isEmpty() || it.all(Char::isDigit)) subCategoryBoxes = it },
+                                    label = { Text("Current boxes") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = subCategoryLimit,
+                                    onValueChange = { if (it.isEmpty() || it.all(Char::isDigit)) subCategoryLimit = it },
+                                    label = { Text("Low stock limit") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            TextButton(
+                                onClick = {
+                                    viewModel.addSubCategory(
+                                        cat.name,
+                                        subCategoryName,
+                                        0.0,
+                                        sealedBoxes = subCategoryBoxes.toIntOrNull() ?: 0,
+                                        lowStockLimit = subCategoryLimit.toIntOrNull() ?: 2
+                                    )
+                                    subCategoryName = ""
+                                    subCategoryBoxes = "0"
+                                    subCategoryLimit = "2"
+                                },
+                                enabled = subCategoryName.isNotBlank()
+                            ) {
+                                Text("+ Add company")
+                            }
                         }
                     }
                 }
@@ -3853,27 +3989,33 @@ fun MenuAndCategoryManagementView(viewModel: ShopViewModel) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("All Items (${products.size})", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Button(
-                    onClick = {
-                        selectedCatForProduct = categories.firstOrNull()?.name.orEmpty()
-                        showAddProductDialog = true
-                    },
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("+ Add Item")
+                val itemModeProducts = products.filter { product ->
+                    categories.none { it.trackBoxes && it.name.equals(product.category, ignoreCase = true) }
+                }
+                Text("All Items (${itemModeProducts.size})", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                if (categories.any { !it.trackBoxes }) {
+                    Button(
+                        onClick = {
+                            selectedCatForProduct = categories.firstOrNull { !it.trackBoxes }?.name.orEmpty()
+                            showAddProductDialog = true
+                        },
+                        shape = RoundedCornerShape(8.dp)
+                    ) { Text("+ Add Item") }
                 }
             }
         }
 
-        if (products.isEmpty()) {
+        val itemModeProducts = products.filter { product ->
+            categories.none { it.trackBoxes && it.name.equals(product.category, ignoreCase = true) }
+        }
+        if (itemModeProducts.isEmpty()) {
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), shape = RoundedCornerShape(12.dp)) {
                     Text("No items added yet. Click '+ Add Item' or 'Smart Bulk Import'.", modifier = Modifier.padding(14.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         } else {
-            items(products) { prod ->
+            items(itemModeProducts) { prod ->
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     shape = RoundedCornerShape(10.dp),
@@ -3887,8 +4029,7 @@ fun MenuAndCategoryManagementView(viewModel: ShopViewModel) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(prod.name, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                             Text(
-                                "Category: ${prod.category} ${if (prod.brand.isNotBlank()) "• ${prod.brand}" else ""}" +
-                                    if (viewModel.isBoxTrackingEnabled(prod.category)) " • ${prod.sealedBoxes} Boxes" else "",
+                                "Category: ${prod.category}",
                                 fontSize = 10.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -3961,19 +4102,19 @@ fun MenuAndCategoryManagementView(viewModel: ShopViewModel) {
     if (showAddProductDialog) {
         var name by remember { mutableStateOf("") }
         var category by remember { mutableStateOf(selectedCatForProduct ?: categories.firstOrNull()?.name.orEmpty()) }
-        var brand by remember { mutableStateOf("") }
         var priceText by remember { mutableStateOf("") }
-        var boxText by remember { mutableStateOf("0") }
-        var productLimitText by remember { mutableStateOf("") }
         val trackBoxes = categories.firstOrNull {
             it.name.equals(category, ignoreCase = true)
-        }?.trackBoxes ?: true
+        }?.trackBoxes ?: false
 
         AlertDialog(
             onDismissRequest = { showAddProductDialog = false },
             title = { Text("+ Add Item", fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (trackBoxes) {
+                        Text("Add an ice-cream company in category management instead of adding an item.")
+                    }
                     Text("Category:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         if (categories.isNotEmpty()) {
@@ -3996,30 +4137,19 @@ fun MenuAndCategoryManagementView(viewModel: ShopViewModel) {
                     }
                     OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Item name") }, singleLine = true)
                     OutlinedTextField(value = priceText, onValueChange = { priceText = it }, label = { Text("Price (₹)") }, singleLine = true)
-                    OutlinedTextField(value = brand, onValueChange = { brand = it }, label = { Text("Brand (optional)") }, singleLine = true)
-                    OutlinedTextField(
-                        value = productLimitText,
-                        onValueChange = { if (it.isEmpty() || it.all(Char::isDigit)) productLimitText = it },
-                        label = { Text("Low stock limit (optional)") },
-                        singleLine = true
-                    )
-                    if (trackBoxes) {
-                        OutlinedTextField(value = boxText, onValueChange = { boxText = it }, label = { Text("Godown Boxes") }, singleLine = true)
-                    }
                 }
             },
             confirmButton = {
                 Button(onClick = {
                     val p = priceText.toDoubleOrNull() ?: 0.0
-                    val b = if (trackBoxes) boxText.toIntOrNull() ?: 0 else 0
-                    if (name.isNotBlank() && category.isNotBlank() && p > 0 && b >= 0) {
+                    if (!trackBoxes && name.isNotBlank() && category.isNotBlank() && p > 0) {
                         if (categories.none { it.name.equals(category.trim(), ignoreCase = true) }) {
                             viewModel.addCategory(category.trim())
                         }
-                        viewModel.addProduct(name, category, brand, p, b, productLimitText.toIntOrNull())
+                        viewModel.addProduct(name, category, "", p, 0, null)
                         showAddProductDialog = false
                     }
-                }) {
+                }, enabled = !trackBoxes) {
                     Text("Save Item")
                 }
             },
@@ -4031,25 +4161,14 @@ fun MenuAndCategoryManagementView(viewModel: ShopViewModel) {
 
     productBeingEdited?.let { product ->
         var name by remember(product.id) { mutableStateOf(product.name) }
-        var brand by remember(product.id) { mutableStateOf(product.brand) }
         var priceText by remember(product.id) { mutableStateOf(product.price.toString()) }
-        var productLimitText by remember(product.id) {
-            mutableStateOf(product.lowStockLimit?.toString().orEmpty())
-        }
         AlertDialog(
             onDismissRequest = { productBeingEdited = null },
             title = { Text("Edit Item", fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Item name") }, singleLine = true)
-                    OutlinedTextField(value = brand, onValueChange = { brand = it }, label = { Text("Brand (optional)") }, singleLine = true)
                     OutlinedTextField(value = priceText, onValueChange = { priceText = it }, label = { Text("Price (₹)") }, singleLine = true)
-                    OutlinedTextField(
-                        value = productLimitText,
-                        onValueChange = { if (it.isEmpty() || it.all(Char::isDigit)) productLimitText = it },
-                        label = { Text("Low stock limit (optional)") },
-                        singleLine = true
-                    )
                 }
             },
             confirmButton = {
@@ -4059,9 +4178,10 @@ fun MenuAndCategoryManagementView(viewModel: ShopViewModel) {
                         viewModel.updateProduct(
                             product.copy(
                                 name = name.trim(),
-                                brand = brand.trim(),
                                 price = price,
-                                lowStockLimit = productLimitText.toIntOrNull()
+                                brand = "",
+                                sealedBoxes = 0,
+                                lowStockLimit = null
                             )
                         )
                         productBeingEdited = null

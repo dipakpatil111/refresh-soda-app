@@ -27,7 +27,7 @@ data class ProductCategory(
     @ColumnInfo(defaultValue = "0")
     val orderIndex: Int = 0,
     @ColumnInfo(defaultValue = "1")
-    val trackBoxes: Boolean = true,
+    val trackBoxes: Boolean = false,
     @ColumnInfo(defaultValue = "2")
     val lowStockLimit: Int = 2
 )
@@ -38,7 +38,11 @@ data class SubCategory(
     val categoryName: String,
     val name: String,
     @ColumnInfo(defaultValue = "0")
-    val defaultPrice: Double = 0.0
+    val defaultPrice: Double = 0.0,
+    @ColumnInfo(defaultValue = "0")
+    val sealedBoxes: Int = 0,
+    @ColumnInfo(defaultValue = "2")
+    val lowStockLimit: Int = 2
 )
 
 @Entity(tableName = "products")

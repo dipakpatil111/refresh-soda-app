@@ -46,6 +46,18 @@ interface ShopDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSubCategory(subCategory: SubCategory)
 
+    @Query("UPDATE sub_categories SET sealedBoxes = :count WHERE id = :id")
+    suspend fun updateSubCategoryBoxes(id: String, count: Int)
+
+    @Query("UPDATE sub_categories SET sealedBoxes = sealedBoxes + :count WHERE id = :id")
+    suspend fun addSubCategoryBoxes(id: String, count: Int)
+
+    @Query("UPDATE sub_categories SET sealedBoxes = CASE WHEN sealedBoxes > 0 THEN sealedBoxes - 1 ELSE 0 END WHERE id = :id")
+    suspend fun openSubCategoryBox(id: String)
+
+    @Query("UPDATE sub_categories SET sealedBoxes = 0 WHERE LOWER(categoryName) = LOWER(:categoryName)")
+    suspend fun clearSubCategoryBoxes(categoryName: String)
+
     @Delete
     suspend fun deleteSubCategory(subCategory: SubCategory)
 
