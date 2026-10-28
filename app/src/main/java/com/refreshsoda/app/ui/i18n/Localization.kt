@@ -51,6 +51,31 @@ object AppStrings {
             AppLanguage.ENGLISH to "Today's Net Profit",
             AppLanguage.MARATHI to "आजचा निव्वळ नफा"
         ),
+        "analytics_title" to mapOf(
+            AppLanguage.HINDI to "एनालिटिक्स",
+            AppLanguage.ENGLISH to "Analytics",
+            AppLanguage.MARATHI to "विश्लेषण"
+        ),
+        "gross_profit" to mapOf(
+            AppLanguage.HINDI to "कुल मुनाफ़ा",
+            AppLanguage.ENGLISH to "Gross Profit",
+            AppLanguage.MARATHI to "एकूण नफा"
+        ),
+        "chart_category_sales" to mapOf(
+            AppLanguage.HINDI to "कैटेगरी के हिसाब से बिक्री",
+            AppLanguage.ENGLISH to "Sales by Category",
+            AppLanguage.MARATHI to "श्रेणीनुसार विक्री"
+        ),
+        "chart_weekly_trend" to mapOf(
+            AppLanguage.HINDI to "7 दिन का ट्रेंड",
+            AppLanguage.ENGLISH to "7-Day Trend",
+            AppLanguage.MARATHI to "७ दिवसांचा ट्रेंड"
+        ),
+        "top_selling_products" to mapOf(
+            AppLanguage.HINDI to "सबसे ज़्यादा बिकने वाले आइटम",
+            AppLanguage.ENGLISH to "Top Selling Products",
+            AppLanguage.MARATHI to "सर्वाधिक विकले जाणारे आयटम"
+        ),
         "cash_galla" to mapOf(
             AppLanguage.HINDI to "Cash (गल्ला)",
             AppLanguage.ENGLISH to "Cash (Till)",

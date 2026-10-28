@@ -42,6 +42,76 @@ data class IceCreamProfitStats(
     val marginPercent: Double = 0.0
 )
 
+// ---------------- ANALYTICS SCREEN MODELS ----------------
+data class OverallProfitSummary(
+    val totalRevenue: Double = 0.0,
+    val totalSalesCount: Int = 0,
+    val totalCost: Double = 0.0,
+    val grossProfit: Double = 0.0,
+    val grossMarginPercent: Double = 0.0,
+    val totalExpenses: Double = 0.0,
+    val netProfit: Double = 0.0
+)
+
+data class CategoryProfitStat(
+    val category: String,
+    val itemsSold: Int = 0,
+    val totalRevenue: Double = 0.0,
+    val totalCost: Double = 0.0,
+    val grossProfit: Double = 0.0,
+    val marginPercent: Double = 0.0,
+    val percentageOfTotalSales: Double = 0.0,
+    val colorHex: Long = 0xFF2A9D8F
+)
+
+data class DayTrendStat(
+    val dayLabel: String,
+    val revenue: Double = 0.0,
+    val profit: Double = 0.0
+)
+
+data class TopProductRank(
+    val rank: Int,
+    val productName: String,
+    val category: String,
+    val qtySold: Int = 0,
+    val revenue: Double = 0.0,
+    val profit: Double = 0.0
+)
+
+private data class SoldLine(
+    val category: String,
+    val name: String,
+    val qty: Int,
+    val price: Double
+)
+
+// itemsDetails format: Category|Name|Qty|Price;Category|Name|Qty|Price
+private fun SaleTransaction.soldLines(): List<SoldLine> {
+    if (itemsDetails.isBlank()) return emptyList()
+    return itemsDetails.split(";").mapNotNull { itemStr ->
+        val parts = itemStr.split("|")
+        if (parts.size < 4) {
+            null
+        } else {
+            SoldLine(
+                category = parts[0].trim(),
+                name = parts[1].trim(),
+                qty = parts[2].toIntOrNull() ?: 1,
+                price = parts[3].toDoubleOrNull() ?: 0.0
+            )
+        }
+    }
+}
+
+private fun List<Product>.costLookup(): Map<String, Double> =
+    associate { it.name.trim().lowercase() to it.costPrice }
+
+private val analyticsPalette = listOf(
+    0xFFE76F51, 0xFF2A9D8F, 0xFFE9C46A, 0xFF264653,
+    0xFF8AB17D, 0xFFF4A261, 0xFF6D597A, 0xFFB56576
+)
+
 class ShopViewModel(
     private val dao: ShopDao,
     context: Context,
@@ -372,6 +442,114 @@ class ShopViewModel(
         val topIce = iceMap.maxByOrNull { it.value }?.let { "${it.key} (${it.value} pcs)" } ?: "—"
         Pair(topSoda, topIce)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Pair("—", "—"))
+
+    // ---------------- ANALYTICS SCREEN FLOWS ----------------
+    val overallProfitSummary = combine(sales, products, expenses) { salesList, productList, expenseList ->
+        val costMap = productList.costLookup()
+        val revenue = salesList.sumOf { it.totalAmount }
+        val cost = salesList.sumOf { sale ->
+            sale.soldLines().sumOf { line -> (costMap[line.name.lowercase()] ?: 0.0) * line.qty }
+        }
+        val gross = revenue - cost
+        val expenseTotal = expenseList.sumOf { it.amount }
+        OverallProfitSummary(
+            totalRevenue = revenue,
+            totalSalesCount = salesList.size,
+            totalCost = cost,
+            grossProfit = gross,
+            grossMarginPercent = if (revenue > 0) (gross / revenue) * 100.0 else 0.0,
+            totalExpenses = expenseTotal,
+            netProfit = gross - expenseTotal
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), OverallProfitSummary())
+
+    val categoryPerformanceStats = combine(sales, products) { salesList, productList ->
+        val costMap = productList.costLookup()
+        val revenueMap = mutableMapOf<String, Double>()
+        val costAgg = mutableMapOf<String, Double>()
+        val qtyMap = mutableMapOf<String, Int>()
+        salesList.forEach { sale ->
+            sale.soldLines().forEach { line ->
+                val cat = line.category
+                revenueMap[cat] = (revenueMap[cat] ?: 0.0) + (line.qty * line.price)
+                costAgg[cat] = (costAgg[cat] ?: 0.0) + (costMap[line.name.lowercase()] ?: 0.0) * line.qty
+                qtyMap[cat] = (qtyMap[cat] ?: 0) + line.qty
+            }
+        }
+        val totalRevenue = revenueMap.values.sum()
+        revenueMap.entries
+            .sortedByDescending { it.value }
+            .mapIndexed { index, entry ->
+                val revenue = entry.value
+                val cost = costAgg[entry.key] ?: 0.0
+                val gross = revenue - cost
+                CategoryProfitStat(
+                    category = entry.key,
+                    itemsSold = qtyMap[entry.key] ?: 0,
+                    totalRevenue = revenue,
+                    totalCost = cost,
+                    grossProfit = gross,
+                    marginPercent = if (revenue > 0) (gross / revenue) * 100.0 else 0.0,
+                    percentageOfTotalSales = if (totalRevenue > 0) (revenue / totalRevenue) * 100.0 else 0.0,
+                    colorHex = analyticsPalette[index % analyticsPalette.size]
+                )
+            }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val weeklySalesTrend = combine(sales, products) { salesList, productList ->
+        val costMap = productList.costLookup()
+        val keyFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val labelFormat = SimpleDateFormat("EEE", Locale.getDefault())
+        val revenueByDay = mutableMapOf<String, Double>()
+        val profitByDay = mutableMapOf<String, Double>()
+        salesList.forEach { sale ->
+            val key = keyFormat.format(Date(sale.timestamp))
+            val cost = sale.soldLines().sumOf { line -> (costMap[line.name.lowercase()] ?: 0.0) * line.qty }
+            revenueByDay[key] = (revenueByDay[key] ?: 0.0) + sale.totalAmount
+            profitByDay[key] = (profitByDay[key] ?: 0.0) + (sale.totalAmount - cost)
+        }
+        val calendar = Calendar.getInstance()
+        calendar.add(Calendar.DAY_OF_YEAR, -6)
+        val days = mutableListOf<DayTrendStat>()
+        repeat(7) {
+            val date = calendar.time
+            val key = keyFormat.format(date)
+            days.add(
+                DayTrendStat(
+                    dayLabel = labelFormat.format(date),
+                    revenue = revenueByDay[key] ?: 0.0,
+                    profit = profitByDay[key] ?: 0.0
+                )
+            )
+            calendar.add(Calendar.DAY_OF_YEAR, 1)
+        }
+        days.toList()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val topRankedProducts = combine(sales, products) { salesList, productList ->
+        val costMap = productList.costLookup()
+        salesList
+            .flatMap { it.soldLines() }
+            .groupBy { it.name.lowercase() }
+            .map { entry ->
+                val group = entry.value
+                val first = group.first()
+                val qty = group.sumOf { it.qty }
+                val revenue = group.sumOf { it.qty * it.price }
+                val cost = (costMap[first.name.lowercase()] ?: 0.0) * qty
+                TopProductRank(
+                    rank = 0,
+                    productName = first.name,
+                    category = first.category,
+                    qtySold = qty,
+                    revenue = revenue,
+                    profit = revenue - cost
+                )
+            }
+            .sortedByDescending { it.qtySold }
+            .take(10)
+            .mapIndexed { index, item -> item.copy(rank = index + 1) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // NOTE: Default data seeding is intentionally removed! All categories and items are added by the user!
 
