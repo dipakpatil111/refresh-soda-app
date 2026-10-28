@@ -1819,9 +1819,9 @@ fun POSScreen(
                                 viewModel.addProduct(
                                     name = trimmed,
                                     category = selectedCategoryName,
+                                    brand = "",
                                     price = 20.0,
-                                    costPrice = 10.0,
-                                    isSoda = true
+                                    boxes = 0
                                 )
                                 selectedCompanyName = trimmed
                                 enteredAmountText = "20"
@@ -2767,16 +2767,7 @@ fun InventoryScreen(viewModel: ShopViewModel) {
         }
 
         if (activeTab == "ICE_CREAM") {
-            // Display default 3 companies (Hocco, Vadilal, Hajoori) or dynamically from DB
-            val companiesToDisplay = if (iceCreamCompanies.isNotEmpty()) {
-                iceCreamCompanies
-            } else {
-                listOf(
-                    SubCategory(id = "comp_hocco", name = "Hocco", categoryName = defaultIceCreamCategoryName, sealedBoxes = 3, costPrice = 0.0),
-                    SubCategory(id = "comp_vadilal", name = "Vadilal", categoryName = defaultIceCreamCategoryName, sealedBoxes = 2, costPrice = 0.0),
-                    SubCategory(id = "comp_hajoori", name = "Hajoori", categoryName = defaultIceCreamCategoryName, sealedBoxes = 9, costPrice = 0.0)
-                )
-            }
+            val companiesToDisplay = iceCreamCompanies
 
             items(companiesToDisplay) { company ->
                 val boxes = company.sealedBoxes
@@ -2992,7 +2983,7 @@ fun InventoryScreen(viewModel: ShopViewModel) {
                         }
 
                         IconButton(
-                            onClick = { viewModel.deleteProduct(product.id) },
+                            onClick = { viewModel.deleteProduct(product) },
                             modifier = Modifier.size(30.dp)
                         ) {
                             Icon(
@@ -3075,9 +3066,9 @@ fun InventoryScreen(viewModel: ShopViewModel) {
                             viewModel.addProduct(
                                 name = name,
                                 category = "Soda",
+                                brand = "",
                                 price = price,
-                                costPrice = price / 2,
-                                isSoda = true
+                                boxes = 0
                             )
                             newProductNameInput = ""
                             newProductPriceInput = "20"
