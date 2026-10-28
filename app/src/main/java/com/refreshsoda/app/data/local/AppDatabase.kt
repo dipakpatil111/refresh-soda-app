@@ -13,6 +13,7 @@ import com.refreshsoda.app.data.model.*
         ShopBrand::class,
         UserProfile::class,
         ProductCategory::class,
+        SubCategory::class,
         Product::class,
         SaleTransaction::class,
         CustomerKhata::class,
@@ -107,6 +108,24 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_6_7 = object : Migration(6, 7) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE TABLE IF NOT EXISTS `brands` (`id` TEXT NOT NULL PRIMARY KEY, `name` TEXT NOT NULL)")
+                db.execSQL("ALTER TABLE `categories` ADD COLUMN `trackBoxes` INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE `categories` ADD COLUMN `lowStockLimit` INTEGER NOT NULL DEFAULT 2")
+                db.execSQL("UPDATE `categories` SET `trackBoxes` = 0 WHERE LOWER(`name`) LIKE '%soda%'")
+                db.execSQL(
+                    "UPDATE `products` SET `sealedBoxes` = 0 WHERE LOWER(`category`) IN " +
+                        "(SELECT LOWER(`name`) FROM `categories` WHERE `trackBoxes` = 0)"
+                )
+                db.execSQL("ALTER TABLE `products` ADD COLUMN `lowStockLimit` INTEGER")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `sub_categories` (
+                        `id` TEXT NOT NULL PRIMARY KEY,
+                        `categoryName` TEXT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `defaultPrice` REAL NOT NULL DEFAULT 0
+                    )
+                    """.trimIndent()
+                )
             }
         }
 

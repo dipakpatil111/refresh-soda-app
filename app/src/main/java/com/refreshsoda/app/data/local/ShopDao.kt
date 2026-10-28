@@ -37,6 +37,18 @@ interface ShopDao {
     @Delete
     suspend fun deleteCategory(category: ProductCategory)
 
+    @Query("SELECT * FROM sub_categories ORDER BY categoryName, name")
+    fun getAllSubCategories(): Flow<List<SubCategory>>
+
+    @Query("SELECT * FROM sub_categories WHERE categoryName = :categoryName ORDER BY name")
+    suspend fun getSubCategories(categoryName: String): List<SubCategory>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSubCategory(subCategory: SubCategory)
+
+    @Delete
+    suspend fun deleteSubCategory(subCategory: SubCategory)
+
     // Products & Menu
     @Query("SELECT * FROM products ORDER BY category, name")
     fun getAllProducts(): Flow<List<Product>>
@@ -58,6 +70,9 @@ interface ShopDao {
 
     @Query("UPDATE products SET sealedBoxes = sealedBoxes + :count WHERE id = :productId")
     suspend fun addBoxes(productId: String, count: Int)
+
+    @Query("UPDATE products SET sealedBoxes = 0 WHERE LOWER(category) = LOWER(:categoryName)")
+    suspend fun clearCategoryBoxes(categoryName: String)
 
     // Sales Transactions
     @Query("SELECT * FROM sales ORDER BY timestamp DESC")

@@ -34,7 +34,7 @@ enum class Screen(val titleKey: String, val icon: ImageVector) {
 class MainActivity : ComponentActivity() {
 
     private val viewModel: ShopViewModel by viewModels {
-        ShopViewModelFactory((application as RefreshApp).database.shopDao())
+        ShopViewModelFactory((application as RefreshApp).database.shopDao(), applicationContext)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

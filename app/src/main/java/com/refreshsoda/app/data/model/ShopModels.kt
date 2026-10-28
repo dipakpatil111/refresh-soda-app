@@ -1,6 +1,7 @@
 package com.refreshsoda.app.data.model
 
 import androidx.room.Entity
+import androidx.room.ColumnInfo
 import androidx.room.PrimaryKey
 
 @Entity(tableName = "brands")
@@ -23,7 +24,21 @@ data class UserProfile(
 data class ProductCategory(
     @PrimaryKey val id: String,
     val name: String,
-    val orderIndex: Int = 0
+    @ColumnInfo(defaultValue = "0")
+    val orderIndex: Int = 0,
+    @ColumnInfo(defaultValue = "1")
+    val trackBoxes: Boolean = true,
+    @ColumnInfo(defaultValue = "2")
+    val lowStockLimit: Int = 2
+)
+
+@Entity(tableName = "sub_categories")
+data class SubCategory(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val categoryName: String,
+    val name: String,
+    @ColumnInfo(defaultValue = "0")
+    val defaultPrice: Double = 0.0
 )
 
 @Entity(tableName = "products")
@@ -34,7 +49,9 @@ data class Product(
     val brand: String = "",
     val price: Double,
     val sealedBoxes: Int = 0,
-    val costPrice: Double = 0.0
+    @ColumnInfo(defaultValue = "0.0")
+    val costPrice: Double = 0.0,
+    val lowStockLimit: Int? = null
 )
 
 data class DraftProductItem(
