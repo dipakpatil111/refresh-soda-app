@@ -95,7 +95,7 @@ class ShopViewModel(
     val todayDateString: String = dateFormat.format(Date())
 
     // Language State
-    private val _language = MutableStateFlow(AppLanguage.HINDI)
+    private val _language = MutableStateFlow(AppLanguage.ENGLISH)
     val language = _language.asStateFlow()
 
     fun setLanguage(lang: AppLanguage) {
@@ -965,6 +965,47 @@ class ShopViewModel(
             }
 
             clearCart()
+        }
+    }
+
+    fun recordDirectSale(
+        category: String,
+        itemName: String,
+        amount: Double,
+        paymentMode: String,
+        customerName: String? = null
+    ) {
+        if (amount <= 0.0) return
+        viewModelScope.launch {
+            val cat = category.ifBlank { "General" }
+            val item = itemName.ifBlank { "Sale" }
+            val sale = SaleTransaction(
+                id = UUID.randomUUID().toString(),
+                totalAmount = amount,
+                discountAmount = 0.0,
+                paymentMode = paymentMode,
+                customerName = customerName,
+                itemsSummary = "$item ($cat) x1",
+                itemsDetails = "$cat|$item|1|$amount"
+            )
+            dao.insertSale(sale)
+            firebaseSync.syncSale(sale)
+            _lastSaleForUndo.value = sale
+
+            if (paymentMode == "UDHAR" && !customerName.isNullOrBlank()) {
+                val existing = khataList.value.find { it.name.equals(customerName.trim(), ignoreCase = true) }
+                if (existing != null) {
+                    dao.addDebt(existing.name, amount)
+                } else {
+                    val newKhata = CustomerKhata(
+                        id = UUID.randomUUID().toString(),
+                        name = customerName.trim(),
+                        outstandingDebt = amount
+                    )
+                    dao.insertOrUpdateKhata(newKhata)
+                    firebaseSync.syncKhata(newKhata)
+                }
+            }
         }
     }
 

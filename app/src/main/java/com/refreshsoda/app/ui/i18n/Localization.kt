@@ -523,14 +523,14 @@ object AppStrings {
 
         // Inward Stock & Distributor Bill Tracking
         "inward_stock_title" to mapOf(
-            AppLanguage.HINDI to "📦 नया माल आवक व सप्लायर बिल",
-            AppLanguage.ENGLISH to "📦 Inward Stock & Supplier Invoice",
-            AppLanguage.MARATHI to "📦 नवीन माल आवक आणि पुरवठादार बिल"
+            AppLanguage.HINDI to "Inward Bill",
+            AppLanguage.ENGLISH to "Inward Bill",
+            AppLanguage.MARATHI to "Inward Bill"
         ),
         "inward_stock_btn" to mapOf(
-            AppLanguage.HINDI to "+ नया माल (बिल अपलोड)",
-            AppLanguage.ENGLISH to "+ New Inward Bill",
-            AppLanguage.MARATHI to "+ नवीन माल (बिल अपलोड)"
+            AppLanguage.HINDI to "+ Inward Bill",
+            AppLanguage.ENGLISH to "+ Inward Bill",
+            AppLanguage.MARATHI to "+ Inward Bill"
         ),
         "select_brand_label" to mapOf(
             AppLanguage.HINDI to "सप्लायर / ब्रांड",
@@ -686,6 +686,6 @@ object AppStrings {
 
     fun get(key: String, language: AppLanguage): String {
         val entry = translations[key]
-        return entry?.get(language) ?: entry?.get(AppLanguage.HINDI) ?: key
+        return entry?.get(language) ?: entry?.get(AppLanguage.ENGLISH) ?: key
     }
 }

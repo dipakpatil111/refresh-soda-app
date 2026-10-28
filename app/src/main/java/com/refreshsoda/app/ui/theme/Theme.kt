@@ -1,4 +1,4 @@
-﻿package com.refreshsoda.app.ui.theme
+package com.refreshsoda.app.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
@@ -14,21 +14,21 @@ enum class AppThemeMode(val displayName: String) {
 }
 
 private val LightColorScheme = lightColorScheme(
-    primary = Color(0xFFEA580C),        // Terracotta Warm Orange (User's Design)
+    primary = Color(0xFF366A55),          // Forest Green from reference mockup
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFFFEDD5), // Soft Peach Cream
-    onPrimaryContainer = Color(0xFF9A3412),
-    secondary = Color(0xFFF97316),      // Bright Amber Orange
+    primaryContainer = Color(0xFFF5C7A9), // Warm Peach
+    onPrimaryContainer = Color(0xFF431407),
+    secondary = Color(0xFFE8A87C),        // Apricot Peach
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFFFF7ED),
-    onSecondaryContainer = Color(0xFF7C2D12),
-    tertiary = Color(0xFF0284C7),       // Sky Blue
-    background = Color(0xFFFAF6F2),     // Warm porcelain off-white background
-    surface = Color.White,              // Pure white cards
-    onSurface = Color(0xFF1C1917),       // Deep warm charcoal slate
-    surfaceVariant = Color(0xFFF5ECE5),  // Soft sand/peach tint
-    onSurfaceVariant = Color(0xFF78716C),// Warm grey
-    outline = Color(0xFFE7DFD8)
+    secondaryContainer = Color(0xFFFDEEE3),
+    onSecondaryContainer = Color(0xFF5A2A18),
+    tertiary = Color(0xFF2E5A47),
+    background = Color(0xFFF6F5F2),       // Light warm cream background
+    surface = Color.White,                // Clean white cards
+    onSurface = Color(0xFF1E293B),         // Charcoal slate text
+    surfaceVariant = Color(0xFFF1F0EC),    // Soft cream tint
+    onSurfaceVariant = Color(0xFF64748B),  // Muted gray
+    outline = Color(0xFFE2E0D8)           // Soft outline
 )
 
 private val DarkColorScheme = darkColorScheme(
