@@ -1129,7 +1129,7 @@ fun DashboardScreen(
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(availableProducts) { prod ->
                             FilterChip(
-                                selected = selectedProduct?.id == prod.id,
+                                selected = selectedProduct == prod,
                                 onClick = { selectedProduct = prod },
                                 label = { Text("${prod.companyName} • ${prod.varietyName} (${prod.sealedBoxes} Left)", fontSize = 11.sp) }
                             )
@@ -1177,6 +1177,7 @@ fun getCategoryFoodIcon(category: String, name: String): String {
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun POSScreen(viewModel: ShopViewModel) {
     val context = LocalContext.current
     val categories by viewModel.categories.collectAsState()
@@ -1734,69 +1735,73 @@ fun POSScreen(viewModel: ShopViewModel) {
 
         // BOTTOM FLOATING CART CAPSULE (Mockup Screen 1)
         if (cart.isNotEmpty()) {
-            Surface(
-                shape = RoundedCornerShape(26.dp),
-                color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 8.dp,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.BottomCenter
             ) {
-                Row(
+                Surface(
+                    shape = RoundedCornerShape(26.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    shadowElevation = 8.dp,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
                 ) {
                     Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.clickable { showConfirmSaleDialog = true }
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.size(32.dp)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.clickable { showConfirmSaleDialog = true }
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.KeyboardArrowUp,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(18.dp)
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.KeyboardArrowUp,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                            Column {
+                                Text(
+                                    text = "${cart.sumOf { it.quantity }} Items",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "₹${finalTotal.toInt()}",
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                             }
                         }
-                        Column {
+
+                        Button(
+                            onClick = { showConfirmSaleDialog = true },
+                            shape = RoundedCornerShape(20.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp)
+                        ) {
                             Text(
-                                text = "${cart.sumOf { it.quantity }} Items",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "₹${finalTotal.toInt()}",
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = MaterialTheme.colorScheme.onSurface
+                                text = "Next  →",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
                             )
                         }
-                    }
-
-                    Button(
-                        onClick = { showConfirmSaleDialog = true },
-                        shape = RoundedCornerShape(20.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp)
-                    ) {
-                        Text(
-                            text = "Next  →",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
                     }
                 }
             }
@@ -1814,7 +1819,6 @@ fun POSScreen(viewModel: ShopViewModel) {
             modifier = Modifier
                 .fillMaxWidth(0.95f)
                 .fillMaxHeight(0.92f),
-            shape = RoundedCornerShape(24.dp),
             content = {
                 Surface(
                     shape = RoundedCornerShape(24.dp),
