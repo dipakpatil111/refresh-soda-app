@@ -203,8 +203,9 @@ fun AuthScreen(
                                     val isOwner = user.role == "OWNER"
                                     ElevatedButton(
                                         onClick = {
-                                            viewModel.quickLogin(user)
-                                            onLoginSuccess()
+                                            // Never log in without a password: just fill in who is logging in.
+                                            loginIdentifier = user.emailOrPhone
+                                            errorMessage = null
                                         },
                                         modifier = Modifier.weight(1f),
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
@@ -322,13 +323,12 @@ fun AuthScreen(
                                 label = { Text(viewModel.getString("role_owner"), fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                                 modifier = Modifier.weight(1f)
                             )
-                            FilterChip(
-                                selected = regRole == "STAFF",
-                                onClick = { regRole = "STAFF" },
-                                label = { Text(viewModel.getString("role_staff"), fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                                modifier = Modifier.weight(1f)
-                            )
                         }
+                        Text(
+                            "Staff account owner login karke Settings se banta hai.",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
 
                         Spacer(modifier = Modifier.height(8.dp))
 

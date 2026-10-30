@@ -56,7 +56,9 @@ data class IceCreamVarietyStock(
     @ColumnInfo(defaultValue = "0")
     val sealedBoxes: Int = 0,
     @ColumnInfo(defaultValue = "2")
-    val lowStockLimit: Int = 2
+    val lowStockLimit: Int = 2,
+    val lastCostPrice: Double = 0.0,
+    val lastMrp: Double = 0.0
 )
 
 @Entity(tableName = "products")
@@ -89,7 +91,10 @@ data class InwardBillItemDraft(
     val id: String = java.util.UUID.randomUUID().toString(),
     val boxesInput: String = boxes.toString(),
     val costPriceInput: String = costPrice.toString(),
-    val sellingPriceInput: String = sellingPrice.toString()
+    val sellingPriceInput: String = sellingPrice.toString(),
+    val piecesPerBox: Int = 0,
+    val piecesPerBoxInput: String = if (piecesPerBox > 0) piecesPerBox.toString() else "",
+    val lineAmount: Double? = null
 ) {
     val lineTotal: Double get() = boxes * costPrice
     val profitPerBox: Double get() = sellingPrice - costPrice
@@ -122,7 +127,8 @@ data class SaleTransaction(
     val customerName: String? = null,
     val itemsSummary: String,
     val itemsDetails: String = "",
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val soldBy: String = ""
 )
 
 @Entity(tableName = "customers_khata")
@@ -131,7 +137,8 @@ data class CustomerKhata(
     val name: String,
     val phone: String = "",
     val outstandingDebt: Double = 0.0,
-    val debtLimit: Double = 2000.0
+    val debtLimit: Double = 2000.0,
+    val dueDateMillis: Long? = null
 )
 
 @Entity(tableName = "khata_repayments")
@@ -195,8 +202,86 @@ data class UserAccount(
     val shopName: String = "",
     val phone: String = "",
     val createdAt: Long = System.currentTimeMillis(),
-    val lastLoginAt: Long = System.currentTimeMillis()
-)
+    val lastLoginAt: Long = System.currentTimeMillis(),
+    val shopId: String = ""
+) {
+    /** Owner's own id acts as the shop id; staff carry their owner's shop id. */
+    val effectiveShopId: String get() = shopId.ifBlank { id }
+}
 
 fun String.isIceCreamCategory(): Boolean =
     lowercase().filter(Char::isLetterOrDigit).contains("icecream")
+
+// ---------------- INWARD / SUPPLIER LEDGER ----------------
+@Entity(tableName = "suppliers")
+data class Supplier(
+    @PrimaryKey val id: String,          // lower-cased company name
+    val name: String,
+    val phone: String = "",
+    val gstNumber: String = "",
+    val address: String = ""
+)
+
+@Entity(tableName = "supplier_purchase_items")
+data class SupplierPurchaseItem(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val purchaseId: String,
+    val varietyName: String,
+    val quantity: Int,
+    val costPerBox: Double,
+    val mrp: Double,
+    val lineAmount: Double,
+    val piecesPerBox: Int = 0
+)
+
+@Entity(tableName = "supplier_payments")
+data class SupplierPayment(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val purchaseId: String,
+    val brand: String,
+    val amount: Double,
+    val paymentMode: String = "CASH",   // CASH / UPI / BANK / CREDIT_NOTE
+    val note: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "supplier_returns")
+data class SupplierReturn(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val brand: String,
+    val category: String,
+    val purchaseId: String = "",
+    val varietyName: String,
+    val quantity: Int,
+    val creditAmount: Double,
+    val reason: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "wastage")
+data class WastageRecord(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val category: String,
+    val companyName: String,
+    val varietyName: String,
+    val quantity: Int,
+    val estimatedCost: Double = 0.0,
+    val reason: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "offers")
+data class Offer(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val name: String,
+    val discountType: String = "PERCENT",  // PERCENT or FLAT
+    val value: Double,
+    val minBill: Double = 0.0,
+    val active: Boolean = true
+) {
+    fun discountFor(billTotal: Double): Double {
+        if (!active || billTotal <= 0.0 || billTotal < minBill) return 0.0
+        val raw = if (discountType == "PERCENT") billTotal * value / 100.0 else value
+        return raw.coerceIn(0.0, billTotal)
+    }
+}

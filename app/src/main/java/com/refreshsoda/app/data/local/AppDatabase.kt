@@ -24,17 +24,33 @@ import com.refreshsoda.app.data.model.*
         PaytmSettlement::class,
         AuditLog::class,
         UserAccount::class,
-        SupplierPurchase::class
+        SupplierPurchase::class,
+        Supplier::class,
+        SupplierPurchaseItem::class,
+        SupplierPayment::class,
+        SupplierReturn::class,
+        WastageRecord::class,
+        Offer::class
     ],
-    version = 9,
-    exportSchema = false
+    version = 10,
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun shopDao(): ShopDao
 
     companion object {
+        const val DB_NAME = "refresh_soda_shop_db"
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
+
+        /** Closes and forgets the singleton (used before restoring a DB backup file). */
+        fun closeInstance() {
+            synchronized(this) {
+                INSTANCE?.close()
+                INSTANCE = null
+            }
+        }
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -211,12 +227,52 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `user_accounts` ADD COLUMN `shopId` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `customers_khata` ADD COLUMN `dueDateMillis` INTEGER")
+                db.execSQL("ALTER TABLE `sales` ADD COLUMN `soldBy` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `ice_cream_variety_stock` ADD COLUMN `lastCostPrice` REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("ALTER TABLE `ice_cream_variety_stock` ADD COLUMN `lastMrp` REAL NOT NULL DEFAULT 0.0")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `suppliers` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, " +
+                        "`phone` TEXT NOT NULL, `gstNumber` TEXT NOT NULL, `address` TEXT NOT NULL, PRIMARY KEY(`id`))"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `supplier_purchase_items` (`id` TEXT NOT NULL, `purchaseId` TEXT NOT NULL, " +
+                        "`varietyName` TEXT NOT NULL, `quantity` INTEGER NOT NULL, `costPerBox` REAL NOT NULL, " +
+                        "`mrp` REAL NOT NULL, `lineAmount` REAL NOT NULL, `piecesPerBox` INTEGER NOT NULL, PRIMARY KEY(`id`))"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `supplier_payments` (`id` TEXT NOT NULL, `purchaseId` TEXT NOT NULL, " +
+                        "`brand` TEXT NOT NULL, `amount` REAL NOT NULL, `paymentMode` TEXT NOT NULL, `note` TEXT NOT NULL, " +
+                        "`timestamp` INTEGER NOT NULL, PRIMARY KEY(`id`))"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `supplier_returns` (`id` TEXT NOT NULL, `brand` TEXT NOT NULL, " +
+                        "`category` TEXT NOT NULL, `purchaseId` TEXT NOT NULL, `varietyName` TEXT NOT NULL, " +
+                        "`quantity` INTEGER NOT NULL, `creditAmount` REAL NOT NULL, `reason` TEXT NOT NULL, " +
+                        "`timestamp` INTEGER NOT NULL, PRIMARY KEY(`id`))"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `wastage` (`id` TEXT NOT NULL, `category` TEXT NOT NULL, " +
+                        "`companyName` TEXT NOT NULL, `varietyName` TEXT NOT NULL, `quantity` INTEGER NOT NULL, " +
+                        "`estimatedCost` REAL NOT NULL, `reason` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, PRIMARY KEY(`id`))"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `offers` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, " +
+                        "`discountType` TEXT NOT NULL, `value` REAL NOT NULL, `minBill` REAL NOT NULL, " +
+                        "`active` INTEGER NOT NULL, PRIMARY KEY(`id`))"
+                )
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "refresh_soda_shop_db"
+                    DB_NAME
                 )
                 .addMigrations(
                     MIGRATION_1_2,
@@ -227,7 +283,8 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_4_6,
                     MIGRATION_6_7,
                     MIGRATION_7_8,
-                    MIGRATION_8_9
+                    MIGRATION_8_9,
+                    MIGRATION_9_10
                 )
                 .fallbackToDestructiveMigrationOnDowngrade()
                 .build()

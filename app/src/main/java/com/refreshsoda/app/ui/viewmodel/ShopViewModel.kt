@@ -5,19 +5,27 @@ import android.content.SharedPreferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.room.withTransaction
+import com.refreshsoda.app.RefreshApp
 import com.refreshsoda.app.data.firebase.FirebaseSyncService
+import com.refreshsoda.app.data.firebase.toMap
+import com.refreshsoda.app.data.local.AppDatabase
 import com.refreshsoda.app.data.local.ShopDao
 import com.refreshsoda.app.data.model.*
 import com.refreshsoda.app.data.security.SecurityUtils
 import com.refreshsoda.app.ui.i18n.AppLanguage
 import com.refreshsoda.app.ui.i18n.AppStrings
 import com.refreshsoda.app.ui.theme.AppThemeMode
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+
+/** Variety row that holds boxes which were counted before per-variety tracking existed. */
+const val UNASSIGNED_VARIETY = "Opening stock (unassigned)"
 
 data class CartItem(
     val product: Product,
@@ -50,6 +58,7 @@ data class OverallProfitSummary(
     val grossProfit: Double = 0.0,
     val grossMarginPercent: Double = 0.0,
     val totalExpenses: Double = 0.0,
+    val totalWastage: Double = 0.0,
     val netProfit: Double = 0.0
 )
 
@@ -113,10 +122,13 @@ private val analyticsPalette = listOf(
 )
 
 class ShopViewModel(
-    private val dao: ShopDao,
+    val dao: ShopDao,
     context: Context,
-    private val firebaseSync: FirebaseSyncService = FirebaseSyncService()
+    val firebaseSync: FirebaseSyncService = FirebaseSyncService()
 ) : ViewModel() {
+
+    val appContext: Context = context.applicationContext
+    val db: AppDatabase get() = (appContext as RefreshApp).database
 
     private val sessionPreferences: SharedPreferences =
         context.applicationContext.getSharedPreferences("shop_session", Context.MODE_PRIVATE)
@@ -199,6 +211,11 @@ class ShopViewModel(
     val currentUser = _currentUser.asStateFlow()
     private val _sessionChecked = MutableStateFlow(false)
     val sessionChecked = _sessionChecked.asStateFlow()
+
+    /** Staff accounts must not see cost, profit, supplier ledger, backups ... */
+    val isOwner: StateFlow<Boolean> = _currentUser
+        .map { user -> user == null || user.role != "STAFF" }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
     val subCategories = dao.getAllSubCategories().stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
@@ -209,6 +226,12 @@ class ShopViewModel(
         SharingStarted.WhileSubscribed(5000),
         emptyList()
     )
+    val suppliers = dao.getAllSuppliers().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val purchaseItems = dao.getAllPurchaseItems().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val supplierPayments = dao.getAllSupplierPayments().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val supplierReturns = dao.getAllSupplierReturns().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val wastageRecords = dao.getAllWastage().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val offers = dao.getAllOffers().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
         viewModelScope.launch {
@@ -222,6 +245,7 @@ class ShopViewModel(
                             sessionPreferences.getString(sessionUserIdKey, null) == savedUserId
                         ) {
                             _currentUser.value = user
+                            onUserSessionStarted(user)
                         }
                     }
                 }
@@ -231,6 +255,53 @@ class ShopViewModel(
                 _sessionChecked.value = true
             }
         }
+    }
+
+    // ---------------- CLOUD MIRROR ----------------
+    private var mirrorStarted = false
+
+    /** Called whenever a user session begins (login, register, app restart with saved session). */
+    private fun onUserSessionStarted(user: UserAccount) {
+        firebaseSync.shopId = user.effectiveShopId
+        startCloudMirror()
+        viewModelScope.launch {
+            try {
+                dao.reconcileCompanyBoxes()
+                // Also (re)writes the lookup fields that make indexed cloud login possible.
+                firebaseSync.syncUserToCloud(user)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    /**
+     * Small master tables are mirrored to the cloud as soon as they change (debounced).
+     * The very first emission is skipped on purpose: on a fresh install the local tables are empty and
+     * pushing them would wipe the cloud copy before it could be restored.
+     */
+    @OptIn(FlowPreview::class)
+    private fun startCloudMirror() {
+        if (mirrorStarted) return
+        mirrorStarted = true
+
+        fun <T> mirror(flow: Flow<List<T>>, name: String, toRow: (T) -> Map<String, Any?>) {
+            viewModelScope.launch {
+                flow.drop(1).debounce(2000).distinctUntilChanged().collect { rows ->
+                    if (_currentUser.value != null && firebaseSync.shopId.isNotBlank()) {
+                        firebaseSync.pushTable(name, rows.map(toRow))
+                    }
+                }
+            }
+        }
+
+        mirror(dao.getAllCategories(), "categories") { it.toMap() }
+        mirror(dao.getAllSubCategories(), "sub_categories") { it.toMap() }
+        mirror(dao.getAllIceCreamVarietyStock(), "variety_stock") { it.toMap() }
+        mirror(dao.getAllSuppliers(), "suppliers") { it.toMap() }
+        mirror(dao.getAllOffers(), "offers") { it.toMap() }
+        mirror(dao.getAllBrands(), "brands") { it.toMap() }
+        mirror(dao.getUserProfile().map { listOfNotNull(it) }, "profile") { it.toMap() }
     }
 
     fun isBoxTrackingEnabled(categoryName: String): Boolean =
@@ -353,8 +424,10 @@ class ShopViewModel(
     val totalKhataOutstanding = khataList.map { list -> list.sumOf { it.outstandingDebt } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
     // Cash Galla Closing Calculations
-    val cashExpensesTotal = expenses.map { list ->
-        list.filter { it.paymentMode == "CASH" }.sumOf { it.amount }
+    // Cash kharcha + cash paid to suppliers (credit notes are not cash)
+    val cashExpensesTotal = combine(expenses, supplierPayments) { expenseList, paymentList ->
+        expenseList.filter { it.paymentMode == "CASH" }.sumOf { it.amount } +
+            paymentList.filter { it.paymentMode == "CASH" }.sumOf { it.amount }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
     val udharCashRepaymentTotal = repayments.map { list ->
@@ -444,7 +517,7 @@ class ShopViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Pair("—", "—"))
 
     // ---------------- ANALYTICS SCREEN FLOWS ----------------
-    val overallProfitSummary = combine(sales, products, expenses) { salesList, productList, expenseList ->
+    val overallProfitSummary = combine(sales, products, expenses, wastageRecords) { salesList, productList, expenseList, wastageList ->
         val costMap = productList.costLookup()
         val revenue = salesList.sumOf { it.totalAmount }
         val cost = salesList.sumOf { sale ->
@@ -452,6 +525,7 @@ class ShopViewModel(
         }
         val gross = revenue - cost
         val expenseTotal = expenseList.sumOf { it.amount }
+        val wastageTotal = wastageList.sumOf { it.estimatedCost }
         OverallProfitSummary(
             totalRevenue = revenue,
             totalSalesCount = salesList.size,
@@ -459,7 +533,8 @@ class ShopViewModel(
             grossProfit = gross,
             grossMarginPercent = if (revenue > 0) (gross / revenue) * 100.0 else 0.0,
             totalExpenses = expenseTotal,
-            netProfit = gross - expenseTotal
+            totalWastage = wastageTotal,
+            netProfit = gross - expenseTotal - wastageTotal
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), OverallProfitSummary())
 
@@ -578,16 +653,23 @@ class ShopViewModel(
 
     fun deleteCategory(category: ProductCategory) {
         viewModelScope.launch {
-            dao.deleteCategory(category)
+            db.withTransaction {
+                dao.deleteVarietyStockForCategory(category.name)
+                dao.deleteSubCategoriesForCategory(category.name)
+                dao.deleteCategory(category)
+            }
         }
     }
 
     fun updateCategory(category: ProductCategory) {
         viewModelScope.launch {
-            dao.insertCategory(category.copy(lowStockLimit = category.lowStockLimit.coerceAtLeast(0)))
-            if (!category.trackBoxes) {
-                dao.clearCategoryBoxes(category.name)
-                dao.clearSubCategoryBoxes(category.name)
+            db.withTransaction {
+                dao.insertCategory(category.copy(lowStockLimit = category.lowStockLimit.coerceAtLeast(0)))
+                if (!category.trackBoxes) {
+                    dao.clearCategoryBoxes(category.name)
+                    dao.clearVarietyStockForCategory(category.name)
+                    dao.clearSubCategoryBoxes(category.name)
+                }
             }
         }
     }
@@ -624,10 +706,12 @@ class ShopViewModel(
 
     fun updateSubCategory(subCategory: SubCategory) {
         viewModelScope.launch {
+            // Box counts are owned by the per-variety stock table; never overwrite them from here.
+            val currentBoxes = dao.getSubCategoryById(subCategory.id)?.sealedBoxes ?: subCategory.sealedBoxes
             dao.insertSubCategory(
                 subCategory.copy(
                     defaultPrice = subCategory.defaultPrice.coerceAtLeast(0.0),
-                    sealedBoxes = subCategory.sealedBoxes.coerceAtLeast(0),
+                    sealedBoxes = currentBoxes.coerceAtLeast(0),
                     lowStockLimit = subCategory.lowStockLimit.coerceAtLeast(0)
                 )
             )
@@ -636,7 +720,10 @@ class ShopViewModel(
 
     fun deleteSubCategory(subCategory: SubCategory) {
         viewModelScope.launch {
-            dao.deleteSubCategory(subCategory)
+            db.withTransaction {
+                dao.deleteVarietyStockForCompany(subCategory.categoryName, subCategory.name)
+                dao.deleteSubCategory(subCategory)
+            }
         }
     }
 
@@ -796,6 +883,8 @@ class ShopViewModel(
     fun completeOrder(paymentMode: String, customerName: String? = null) {
         val currentCart = _cart.value
         if (currentCart.isEmpty()) return
+        // Udhaar without a customer would be lost (no khata entry), so it is never accepted.
+        if (paymentMode == "UDHAR" && customerName.isNullOrBlank()) return
 
         val rawTotal = currentCart.sumOf { it.total }
         val finalTotal = (rawTotal - _discount.value).coerceAtLeast(0.0)
@@ -819,9 +908,30 @@ class ShopViewModel(
                 paymentMode = paymentMode,
                 customerName = customerName,
                 itemsSummary = summary,
-                itemsDetails = details
+                itemsDetails = details,
+                soldBy = _currentUser.value?.name.orEmpty()
             )
-            dao.insertSale(sale)
+            // Sale + khata entry are written together or not at all.
+            val khataToSync = db.withTransaction {
+                dao.insertSale(sale)
+                if (paymentMode == "UDHAR" && !customerName.isNullOrBlank()) {
+                    val existing = dao.getKhataByName(customerName.trim())
+                    if (existing != null) {
+                        dao.addDebt(existing.name, finalTotal)
+                    } else {
+                        dao.insertOrUpdateKhata(
+                            CustomerKhata(
+                                id = UUID.randomUUID().toString(),
+                                name = customerName.trim(),
+                                outstandingDebt = finalTotal
+                            )
+                        )
+                    }
+                    dao.getKhataByName(customerName.trim())
+                } else {
+                    null
+                }
+            }
             _lastSaleForUndo.value = sale
             saleUndoExpiryJob?.cancel()
             saleUndoExpiryJob = viewModelScope.launch {
@@ -831,30 +941,29 @@ class ShopViewModel(
                 }
             }
 
-            // If Udhaar sale, update or create Khata
-            if (paymentMode == "UDHAR" && !customerName.isNullOrBlank()) {
-                val existing = khataList.value.find { it.name.equals(customerName.trim(), ignoreCase = true) }
-                if (existing != null) {
-                    dao.addDebt(existing.name, finalTotal)
-                } else {
-                    val newKhata = CustomerKhata(
-                        id = UUID.randomUUID().toString(),
-                        name = customerName.trim(),
-                        outstandingDebt = finalTotal
-                    )
-                    dao.insertOrUpdateKhata(newKhata)
-                    firebaseSync.syncKhata(newKhata)
-                }
-            }
-
             clearCart()
             firebaseSync.syncSale(sale)
+            if (khataToSync != null) firebaseSync.syncKhata(khataToSync)
         }
+    }
+
+    /** Gives the udhaar of a removed UDHAR sale back to the customer's khata. Must run inside a transaction. */
+    private suspend fun reverseUdharForSale(sale: SaleTransaction): CustomerKhata? {
+        val customer = sale.customerName
+        if (sale.paymentMode != "UDHAR" || customer.isNullOrBlank()) return null
+        val existing = dao.getKhataByName(customer.trim()) ?: return null
+        dao.recordRepayment(existing.id, sale.totalAmount)
+        return dao.getKhataById(existing.id)
     }
 
     fun deleteSale(sale: SaleTransaction) {
         viewModelScope.launch {
-            dao.deleteSale(sale)
+            val khata = db.withTransaction {
+                dao.deleteSale(sale)
+                reverseUdharForSale(sale)
+            }
+            firebaseSync.delete("sales", sale.id)
+            if (khata != null) firebaseSync.syncKhata(khata)
             dao.insertAuditLog(
                 AuditLog(
                     id = UUID.randomUUID().toString(),
@@ -873,13 +982,12 @@ class ShopViewModel(
         }
         saleUndoExpiryJob?.cancel()
         viewModelScope.launch {
-            dao.deleteSale(sale)
-            if (sale.paymentMode == "UDHAR" && !sale.customerName.isNullOrBlank()) {
-                val existing = khataList.value.find { it.name.equals(sale.customerName.trim(), ignoreCase = true) }
-                if (existing != null) {
-                    dao.recordRepayment(existing.id, sale.totalAmount)
-                }
+            val khata = db.withTransaction {
+                dao.deleteSale(sale)
+                reverseUdharForSale(sale)
             }
+            firebaseSync.delete("sales", sale.id)
+            if (khata != null) firebaseSync.syncKhata(khata)
             _lastSaleForUndo.value = null
             dao.insertAuditLog(
                 AuditLog(
@@ -913,25 +1021,15 @@ class ShopViewModel(
     fun backupToCloud(onResult: (Boolean, String) -> Unit) {
         viewModelScope.launch {
             try {
-                val prods = products.value
-                prods.forEach { firebaseSync.syncProduct(it) }
-                val sls = sales.value
-                sls.take(50).forEach { firebaseSync.syncSale(it) }
-                val kht = khataList.value
-                kht.forEach { firebaseSync.syncKhata(it) }
-                val exp = expenses.value
-                exp.take(50).forEach { firebaseSync.syncExpense(it) }
-                val pur = supplierPurchases.value
-                pur.forEach { firebaseSync.syncPurchase(it) }
-
+                val count = firebaseSync.backupEverything(dao)
                 dao.insertAuditLog(
                     AuditLog(
                         id = UUID.randomUUID().toString(),
                         action = "CLOUD_BACKUP",
-                        details = "Backed up shop data to Firebase Cloud"
+                        details = "Backed up $count records to Firebase Cloud"
                     )
                 )
-                onResult(true, "All shop data backed up to cloud successfully!")
+                onResult(true, "All shop data backed up to cloud ($count records).")
             } catch (e: Exception) {
                 onResult(false, e.localizedMessage ?: "Cloud backup failed")
             }
@@ -957,13 +1055,24 @@ class ShopViewModel(
         }
     }
 
+    /** Company-level helpers kept for compatibility. They operate on the variety table so totals never drift. */
     fun openSubCategoryBox(subCategory: SubCategory) {
         viewModelScope.launch {
             val category = categories.value.firstOrNull {
                 it.name.equals(subCategory.categoryName, ignoreCase = true)
             }
             if (category?.trackBoxes != true) return@launch
-            dao.openSubCategoryBox(subCategory.id)
+            db.withTransaction {
+                val variety = dao.snapshotVarietyStock().firstOrNull {
+                    it.categoryName.equals(subCategory.categoryName, ignoreCase = true) &&
+                        it.companyName.equals(subCategory.name, ignoreCase = true) &&
+                        it.sealedBoxes > 0
+                }
+                if (variety != null) {
+                    dao.insertIceCreamVarietyStock(variety.copy(sealedBoxes = variety.sealedBoxes - 1))
+                    dao.reconcileCompanyBoxes()
+                }
+            }
             dao.insertAuditLog(
                 AuditLog(
                     id = UUID.randomUUID().toString(),
@@ -981,7 +1090,10 @@ class ShopViewModel(
                 it.name.equals(subCategory.categoryName, ignoreCase = true)
             }
             if (category?.trackBoxes != true) return@launch
-            dao.addSubCategoryBoxes(subCategory.id, count)
+            db.withTransaction {
+                addVarietyBoxes(subCategory.categoryName, subCategory.name, UNASSIGNED_VARIETY, count)
+                dao.reconcileCompanyBoxes()
+            }
             dao.insertAuditLog(
                 AuditLog(
                     id = UUID.randomUUID().toString(),
@@ -992,26 +1104,37 @@ class ShopViewModel(
         }
     }
 
-    private suspend fun addVarietyBoxes(
+    /** Adds [count] boxes to one variety row (creating it if needed). Caller supplies the transaction. */
+    suspend fun addVarietyBoxes(
         categoryName: String,
         companyName: String,
         varietyName: String,
-        count: Int
+        count: Int,
+        costPrice: Double = 0.0,
+        mrp: Double = 0.0
     ) {
         val existing = dao.getIceCreamVarietyStock(categoryName, companyName, varietyName)
         val defaultLimit = categories.value.firstOrNull {
             it.name.equals(categoryName, ignoreCase = true)
         }?.lowStockLimit ?: 2
-        dao.insertIceCreamVarietyStock(
-            existing?.copy(sealedBoxes = (existing.sealedBoxes + count).coerceAtLeast(0))
-                ?: IceCreamVarietyStock(
-                    categoryName = categoryName,
-                    companyName = companyName,
-                    varietyName = varietyName.trim(),
-                    sealedBoxes = count.coerceAtLeast(0),
-                    lowStockLimit = defaultLimit
-                )
-        )
+        val updated = if (existing != null) {
+            existing.copy(
+                sealedBoxes = (existing.sealedBoxes + count).coerceAtLeast(0),
+                lastCostPrice = if (costPrice > 0) costPrice else existing.lastCostPrice,
+                lastMrp = if (mrp > 0) mrp else existing.lastMrp
+            )
+        } else {
+            IceCreamVarietyStock(
+                categoryName = categoryName,
+                companyName = companyName,
+                varietyName = varietyName.trim(),
+                sealedBoxes = count.coerceAtLeast(0),
+                lowStockLimit = defaultLimit,
+                lastCostPrice = costPrice,
+                lastMrp = mrp
+            )
+        }
+        dao.insertIceCreamVarietyStock(updated)
     }
 
     fun addIceCreamVarietyBoxes(categoryName: String, companyName: String, varietyName: String, count: Int) {
@@ -1024,8 +1147,10 @@ class ShopViewModel(
             val company = dao.getSubCategories(category.name).firstOrNull {
                 it.name.equals(companyName, ignoreCase = true)
             } ?: return@launch
-            addVarietyBoxes(category.name, company.name, cleanVarietyName, count)
-            dao.addSubCategoryBoxes(company.id, count)
+            db.withTransaction {
+                addVarietyBoxes(category.name, company.name, cleanVarietyName, count)
+                dao.reconcileCompanyBoxes()
+            }
             dao.insertAuditLog(
                 AuditLog(
                     id = UUID.randomUUID().toString(),
@@ -1038,43 +1163,45 @@ class ShopViewModel(
 
     fun updateIceCreamVarietyStock(stock: IceCreamVarietyStock, sealedBoxes: Int, lowStockLimit: Int) {
         viewModelScope.launch {
-            val current = dao.getIceCreamVarietyStock(
-                stock.categoryName,
-                stock.companyName,
-                stock.varietyName
-            )
-            val oldBoxes = current?.sealedBoxes ?: 0
-            val updated = stock.copy(
-                sealedBoxes = sealedBoxes.coerceAtLeast(0),
-                lowStockLimit = lowStockLimit.coerceAtLeast(0)
-            )
-            dao.insertIceCreamVarietyStock(updated)
-            dao.getSubCategories(stock.categoryName).firstOrNull {
-                it.name.equals(stock.companyName, ignoreCase = true)
-            }?.let { company ->
-                dao.adjustSubCategoryBoxes(company.id, updated.sealedBoxes - oldBoxes)
+            db.withTransaction {
+                val current = dao.getIceCreamVarietyStock(
+                    stock.categoryName,
+                    stock.companyName,
+                    stock.varietyName
+                ) ?: stock
+                dao.insertIceCreamVarietyStock(
+                    current.copy(
+                        sealedBoxes = sealedBoxes.coerceAtLeast(0),
+                        lowStockLimit = lowStockLimit.coerceAtLeast(0)
+                    )
+                )
+                dao.reconcileCompanyBoxes()
             }
         }
     }
 
     fun openIceCreamVarietyBox(stock: IceCreamVarietyStock) {
         viewModelScope.launch {
-            val company = dao.getSubCategories(stock.categoryName).firstOrNull {
-                it.name.equals(stock.companyName, ignoreCase = true)
-            } ?: return@launch
-            val current = dao.getIceCreamVarietyStock(
-                stock.categoryName,
-                stock.companyName,
-                stock.varietyName
-            ) ?: return@launch
-            if (current.sealedBoxes <= 0) return@launch
-            dao.insertIceCreamVarietyStock(current.copy(sealedBoxes = current.sealedBoxes - 1))
-            dao.adjustSubCategoryBoxes(company.id, -1)
+            val opened = db.withTransaction {
+                val current = dao.getIceCreamVarietyStock(
+                    stock.categoryName,
+                    stock.companyName,
+                    stock.varietyName
+                )
+                if (current == null || current.sealedBoxes <= 0) {
+                    false
+                } else {
+                    dao.insertIceCreamVarietyStock(current.copy(sealedBoxes = current.sealedBoxes - 1))
+                    dao.reconcileCompanyBoxes()
+                    true
+                }
+            }
+            if (!opened) return@launch
             dao.insertAuditLog(
                 AuditLog(
                     id = UUID.randomUUID().toString(),
                     action = "BOX_OPENED",
-                    details = "Opened box: ${stock.companyName} • ${stock.varietyName}"
+                    details = "-1 Box opened: ${stock.companyName} • ${stock.varietyName}"
                 )
             )
         }
@@ -1113,9 +1240,15 @@ class ShopViewModel(
         }
     }
 
+    fun setKhataDueDate(customerId: String, dueDateMillis: Long?) {
+        viewModelScope.launch {
+            dao.updateKhataDueDate(customerId, dueDateMillis)
+            dao.getKhataById(customerId)?.let { firebaseSync.syncKhata(it) }
+        }
+    }
+
     fun recordKhataRepayment(customerId: String, customerName: String, amount: Double, paymentMode: String = "CASH") {
         viewModelScope.launch {
-            dao.recordRepayment(customerId, amount)
             val repayment = KhataRepayment(
                 id = UUID.randomUUID().toString(),
                 customerId = customerId,
@@ -1123,7 +1256,13 @@ class ShopViewModel(
                 amount = amount,
                 paymentMode = paymentMode
             )
-            dao.insertRepayment(repayment)
+            val updatedKhata = db.withTransaction {
+                dao.recordRepayment(customerId, amount)
+                dao.insertRepayment(repayment)
+                dao.getKhataById(customerId)
+            }
+            firebaseSync.syncRepayment(repayment)
+            if (updatedKhata != null) firebaseSync.syncKhata(updatedKhata)
             dao.insertAuditLog(
                 AuditLog(
                     id = UUID.randomUUID().toString(),
@@ -1159,6 +1298,7 @@ class ShopViewModel(
     fun deleteExpense(expense: Expense) {
         viewModelScope.launch {
             dao.deleteExpense(expense)
+            firebaseSync.delete("expenses", expense.id)
         }
     }
 
@@ -1239,6 +1379,7 @@ class ShopViewModel(
     fun deleteProduct(product: Product) {
         viewModelScope.launch {
             dao.deleteProduct(product)
+            firebaseSync.delete("products", product.id)
         }
     }
 
@@ -1369,38 +1510,24 @@ _Report generated by Refresh Soda App_
             if (localUser == null) {
                 dao.insertUser(user)
             }
-            // Auto upgrade legacy plain password to secure SHA-256 hash
-            if (user.password == pass) {
-                val upgradedUser = user.copy(password = SecurityUtils.hashPassword(pass))
-                dao.insertUser(upgradedUser)
-                firebaseSync.syncUserToCloud(upgradedUser)
+            // Upgrade legacy credentials (plain text / fixed-salt SHA-256) to per-user-salt PBKDF2.
+            val activeUser = if (SecurityUtils.needsUpgrade(user.password)) {
+                user.copy(password = SecurityUtils.hashPassword(pass)).also { dao.insertUser(it) }
+            } else {
+                user
             }
-            dao.updateLastLogin(user.id, System.currentTimeMillis())
-            _currentUser.value = user
-            sessionPreferences.edit().putString(sessionUserIdKey, user.id).apply()
+            dao.updateLastLogin(activeUser.id, System.currentTimeMillis())
+            _currentUser.value = activeUser
+            sessionPreferences.edit().putString(sessionUserIdKey, activeUser.id).apply()
+            onUserSessionStarted(activeUser)
             dao.insertAuditLog(
                 AuditLog(
                     id = UUID.randomUUID().toString(),
                     action = "USER_LOGIN",
-                    details = "User logged in: ${user.name} (${user.role})"
+                    details = "User logged in: ${activeUser.name} (${activeUser.role})"
                 )
             )
             onResult(true, null)
-        }
-    }
-
-    fun quickLogin(user: UserAccount) {
-        viewModelScope.launch {
-            dao.updateLastLogin(user.id, System.currentTimeMillis())
-            _currentUser.value = user
-            sessionPreferences.edit().putString(sessionUserIdKey, user.id).apply()
-            dao.insertAuditLog(
-                AuditLog(
-                    id = UUID.randomUUID().toString(),
-                    action = "USER_LOGIN",
-                    details = "Quick login: ${user.name} (${user.role})"
-                )
-            )
         }
     }
 
@@ -1423,6 +1550,12 @@ _Report generated by Refresh Soda App_
                 onResult(false, getString("err_user_exists"))
                 return@launch
             }
+            // Staff accounts can only be created by a logged-in owner (from Settings), and they join that owner's shop.
+            val actor = _currentUser.value
+            if (role == "STAFF" && actor?.role != "OWNER") {
+                onResult(false, "Staff account sirf owner Settings se bana sakta hai.")
+                return@launch
+            }
             val newUser = UserAccount(
                 id = UUID.randomUUID().toString(),
                 name = name.trim(),
@@ -1430,11 +1563,16 @@ _Report generated by Refresh Soda App_
                 password = SecurityUtils.hashPassword(pass),
                 role = role,
                 shopName = shopName.trim(),
-                phone = phone.ifBlank { identifier.trim() }
+                phone = phone.ifBlank { identifier.trim() },
+                shopId = if (role == "STAFF") actor?.effectiveShopId.orEmpty() else ""
             )
             dao.insertUser(newUser)
-            _currentUser.value = newUser
-            sessionPreferences.edit().putString(sessionUserIdKey, newUser.id).apply()
+            if (role != "STAFF") {
+                // Creating a staff account must not switch the owner's session to the staff user.
+                _currentUser.value = newUser
+                sessionPreferences.edit().putString(sessionUserIdKey, newUser.id).apply()
+                onUserSessionStarted(newUser)
+            }
 
             if (role == "OWNER") {
                 dao.insertOrUpdateProfile(
@@ -1463,6 +1601,7 @@ _Report generated by Refresh Soda App_
         viewModelScope.launch {
             val user = _currentUser.value
             _currentUser.value = null
+            firebaseSync.shopId = ""
             sessionPreferences.edit().remove(sessionUserIdKey).apply()
             if (user != null) {
                 dao.insertAuditLog(
@@ -1479,6 +1618,7 @@ _Report generated by Refresh Soda App_
     fun deleteUserAccount(user: UserAccount) {
         viewModelScope.launch {
             dao.deleteUser(user)
+            firebaseSync.deleteUserFromCloud(user.id)
             if (_currentUser.value?.id == user.id ||
                 sessionPreferences.getString(sessionUserIdKey, null) == user.id
             ) {
@@ -1490,107 +1630,6 @@ _Report generated by Refresh Soda App_
                     id = UUID.randomUUID().toString(),
                     action = "USER_DELETED",
                     details = "Deleted staff user: ${user.name}"
-                )
-            )
-        }
-    }
-
-    // ---------------- INWARD STOCK & DISTRIBUTOR BILLS ----------------
-    fun saveInwardStockPurchase(
-        brand: String,
-        category: String,
-        billNumber: String,
-        billDate: String,
-        totalAmount: Double,
-        paidAmount: Double,
-        paymentStatus: String,
-        paymentMode: String,
-        draftItems: List<InwardBillItemDraft>,
-        onComplete: (String?) -> Unit
-    ) {
-        viewModelScope.launch {
-            val categoryName = category.trim()
-            val brandName = brand.trim()
-            if (categoryName.isBlank() || brandName.isBlank()) {
-                onComplete("Enter a supplier and choose or add a category.")
-                return@launch
-            }
-            val currentCategories = dao.getAllCategories().first()
-            val trackBoxes = currentCategories.firstOrNull {
-                it.name.equals(categoryName, ignoreCase = true)
-            }?.trackBoxes ?: false
-            if (!trackBoxes) {
-                onComplete("Inward stock is only available for ice-cream categories.")
-                return@launch
-            }
-            if (draftItems.isEmpty() || draftItems.any {
-                    it.name.isBlank() || (trackBoxes && it.boxes !in 1..10000) ||
-                        it.costPrice !in 0.01..100000.0 || it.sellingPrice !in 0.01..100000.0
-                }) {
-                onComplete("Complete every item with a name, quantity, cost and selling price.")
-                return@launch
-            }
-            if (paidAmount !in 0.0..totalAmount) {
-                onComplete("Paid amount must be between zero and the bill total.")
-                return@launch
-            }
-            val company = dao.getSubCategories(categoryName).firstOrNull {
-                it.name.equals(brandName, ignoreCase = true)
-            } ?: SubCategory(categoryName = categoryName, name = brandName).also {
-                dao.insertSubCategory(it)
-            }
-            val validItems = draftItems
-
-            val totalBoxes = if (trackBoxes) validItems.sumOf { it.boxes } else 0
-            val itemsSummary = validItems.joinToString(", ") { item ->
-                "${item.name} (${item.boxes} Box • Cost ₹${item.costPrice} • MRP ₹${item.sellingPrice})"
-            }
-            val purchase = SupplierPurchase(
-                id = UUID.randomUUID().toString(),
-                brand = brandName,
-                category = categoryName,
-                billNumber = billNumber.trim().ifBlank { "INV-${(System.currentTimeMillis() % 10000)}" },
-                billDate = billDate.trim().ifBlank { todayDateString },
-                totalAmount = totalAmount,
-                paidAmount = paidAmount,
-                paymentStatus = paymentStatus,
-                paymentMode = paymentMode,
-                totalBoxes = totalBoxes,
-                itemsSummary = itemsSummary
-            )
-            dao.insertSupplierPurchase(purchase)
-            dao.addSubCategoryBoxes(company.id, totalBoxes)
-            validItems
-                .filter { it.name.isNotBlank() && it.boxes > 0 }
-                .groupBy { it.name.trim().lowercase(Locale.getDefault()) }
-                .values
-                .forEach { items ->
-                    val varietyName = items.first().name.trim()
-                    val boxes = items.sumOf { it.boxes }
-                    addVarietyBoxes(categoryName, company.name, varietyName, boxes)
-                }
-
-            dao.insertAuditLog(
-                AuditLog(
-                    id = UUID.randomUUID().toString(),
-                    action = "STOCK_INWARD_BILL",
-                    details = "Inward $brandName ($categoryName): $totalBoxes Boxes, Bill ₹${totalAmount.toInt()} [$paymentStatus, Paid: ₹${paidAmount.toInt()}]"
-                )
-            )
-
-            firebaseSync.syncPurchase(purchase)
-            onComplete(null)
-        }
-    }
-
-    fun markSupplierBillPaid(purchase: SupplierPurchase) {
-        viewModelScope.launch {
-            dao.markPurchaseFullPaid(purchase.id)
-            dao.insertAuditLog(
-                AuditLog(
-                    id = UUID.randomUUID().toString(),
-                    action = "SUPPLIER_BILL_PAID",
-                    details = "Paid balance for ${purchase.brand} Bill #${purchase.billNumber}"
                 )
             )
         }

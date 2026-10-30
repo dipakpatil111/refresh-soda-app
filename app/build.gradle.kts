@@ -13,8 +13,8 @@ android {
         applicationId = "com.refreshsoda.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
@@ -45,6 +45,13 @@ android {
     }
 }
 
+// Room exports its schema JSON here so future migrations can be verified.
+kapt {
+    arguments {
+        arg("room.schemaLocation", "$projectDir/schemas")
+    }
+}
+
 dependencies {
     // Jetpack Compose & Material 3
     implementation(platform(libs.androidx.compose.bom))
@@ -72,4 +79,10 @@ dependencies {
 
     // ML Kit Text Recognition for Bill Scanning
     implementation(libs.mlkit.text.recognition)
+
+    // Daily low-stock / dues notification and automatic local backup
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
+
+    // QR code for dynamic UPI payment
+    implementation("com.google.zxing:core:3.5.3")
 }

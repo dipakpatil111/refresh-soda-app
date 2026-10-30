@@ -43,7 +43,18 @@ import com.refreshsoda.app.data.model.isIceCreamCategory
 import com.refreshsoda.app.data.ocr.BillScannerService
 import com.refreshsoda.app.ui.i18n.AppLanguage
 import com.refreshsoda.app.ui.theme.AppThemeMode
+import com.refreshsoda.app.data.model.Offer
+import com.refreshsoda.app.data.model.IceCreamVarietyStock
 import com.refreshsoda.app.ui.viewmodel.ShopViewModel
+import com.refreshsoda.app.ui.viewmodel.InwardRequest
+import com.refreshsoda.app.ui.viewmodel.MAX_INWARD_QTY
+import com.refreshsoda.app.ui.viewmodel.UNASSIGNED_VARIETY
+import com.refreshsoda.app.ui.viewmodel.loadPurchaseItems
+import com.refreshsoda.app.ui.viewmodel.saveInwardPurchase
+import com.refreshsoda.app.ui.viewmodel.saveSupplier
+import com.refreshsoda.app.util.BillImages
+import com.refreshsoda.app.util.ReceiptPdf
+import com.refreshsoda.app.util.ShareUtils
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.*
@@ -77,6 +88,7 @@ fun SettingsScreen(viewModel: ShopViewModel) {
     val allUsers by viewModel.allUsers.collectAsState()
     val currentLang by viewModel.language.collectAsState()
     val currentTheme by viewModel.themeMode.collectAsState()
+    val isOwner by viewModel.isOwner.collectAsState()
 
     var showEditProfileDialog by remember { mutableStateOf(false) }
     var showAddStaffDialog by remember { mutableStateOf(false) }
@@ -184,7 +196,7 @@ fun SettingsScreen(viewModel: ShopViewModel) {
 
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     if (!isCurrent) {
-                                        TextButton(onClick = { viewModel.quickLogin(user) }) {
+                                        TextButton(onClick = { viewModel.logout() }) { // switching user always goes through the password screen
                                             Text(viewModel.getString("switch_user_btn"), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                         }
                                         if (currentUser?.role == "OWNER") {
@@ -397,8 +409,8 @@ fun SettingsScreen(viewModel: ShopViewModel) {
             }
         }
 
-        // 4. CLOUD BACKUP & RESTORE SECTION
-        item {
+        // 4. CLOUD BACKUP & RESTORE SECTION (owner only)
+        if (isOwner) item {
             Text(
                 "☁️ Cloud Backup & Data Recovery (क्लाउड बैकअप)",
                 fontSize = 15.sp,
@@ -407,7 +419,7 @@ fun SettingsScreen(viewModel: ShopViewModel) {
             )
         }
 
-        item {
+        if (isOwner) item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(20.dp),
@@ -452,6 +464,9 @@ fun SettingsScreen(viewModel: ShopViewModel) {
                 }
             }
         }
+
+        // 4b. OWNER TOOLS: local backup, CSV export, bulk prices, offers
+        if (isOwner) item { OwnerToolsSection(viewModel = viewModel) }
 
         // 5. APP INFO & DATA BACKUP STATUS
         item {
@@ -746,6 +761,8 @@ fun DashboardScreen(
 
         // QUICK 1-TAP EXPENSES ROW
         // LOW STOCK RED WARNING BADGE
+        item { AlertsCard(viewModel = viewModel, includeLowStock = false) }
+
         if (lowStockItems.isNotEmpty()) {
             item {
                 Card(
@@ -952,6 +969,22 @@ fun DashboardScreen(
                                 Icon(Icons.Default.ReceiptLong, contentDescription = "Share Receipt", tint = Color(0xFF16A34A), modifier = Modifier.size(18.dp))
                             }
 
+                            // PDF receipt (opens any app: WhatsApp, print, Drive ...)
+                            IconButton(
+                                onClick = {
+                                    try {
+                                        val shop = viewModel.userProfile.value
+                                        val pdf = ReceiptPdf.create(context, shop.shopName, shop.address, shop.phone, sale)
+                                        ShareUtils.shareFile(context, pdf, "application/pdf", "Bill PDF share karein")
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "PDF nahi ban paya: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                                    }
+                                },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(Icons.Default.PictureAsPdf, contentDescription = "PDF Receipt", tint = Color(0xFF0284C7), modifier = Modifier.size(18.dp))
+                            }
+
                             // Delete Sale Button
                             IconButton(
                                 onClick = { viewModel.deleteSale(sale) },
@@ -985,6 +1018,22 @@ fun POSScreen(viewModel: ShopViewModel) {
     val discount by viewModel.discount.collectAsState()
     val topFavorites by viewModel.topFavoriteProducts.collectAsState(initial = emptyList())
     val lastSaleForUndo by viewModel.lastSaleForUndo.collectAsState()
+
+    val shopProfile by viewModel.userProfile.collectAsState()
+    var showUpiQr by remember { mutableStateOf(false) }
+    val cartRawTotal = cart.sumOf { it.total }
+    if (showUpiQr) {
+        UpiQrDialog(
+            upiId = shopProfile.upiId,
+            shopName = shopProfile.shopName,
+            amount = (cartRawTotal - discount).coerceAtLeast(0.0),
+            onPaid = {
+                showUpiQr = false
+                viewModel.completeOrder("UPI")
+            },
+            onDismiss = { showUpiQr = false }
+        )
+    }
 
     var undoSecondsLeft by remember { mutableStateOf(0) }
     LaunchedEffect(lastSaleForUndo?.id) {
@@ -1140,6 +1189,11 @@ fun POSScreen(viewModel: ShopViewModel) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
                 Spacer(modifier = Modifier.height(8.dp))
 
+                if (cart.isNotEmpty()) {
+                    OfferChips(viewModel = viewModel, rawTotal = cartRawTotal, discount = discount)
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1164,7 +1218,14 @@ fun POSScreen(viewModel: ShopViewModel) {
                         }
 
                         Button(
-                            onClick = { viewModel.completeOrder("UPI") },
+                            onClick = {
+                                if (shopProfile.upiId.isBlank()) {
+                                    Toast.makeText(context, "Settings mein UPI ID daalein to bill ke amount ka QR dikhega.", Toast.LENGTH_SHORT).show()
+                                    viewModel.completeOrder("UPI")
+                                } else {
+                                    showUpiQr = true
+                                }
+                            },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
@@ -2059,12 +2120,15 @@ fun SmartBulkImportDialog(
 @Composable
 fun InwardBillDialog(
     viewModel: ShopViewModel,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    editPurchase: SupplierPurchase? = null
 ) {
     val context = LocalContext.current
     val categories by viewModel.categories.collectAsState()
     val subCategories by viewModel.subCategories.collectAsState()
-    val inwardCategories = categories.filter { it.trackBoxes }
+    val inwardCategories = categories
+    val suppliers by viewModel.suppliers.collectAsState()
+    val isOwner by viewModel.isOwner.collectAsState()
 
     var selectedBrand by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("") }
@@ -2078,6 +2142,10 @@ fun InwardBillDialog(
     var showAddCompany by remember { mutableStateOf(false) }
     var newCompanyName by remember { mutableStateOf("") }
     var addGstToCost by remember { mutableStateOf(false) }
+    var printedTotalText by remember { mutableStateOf("") }
+    var updateMenuPrice by remember { mutableStateOf(false) }
+    var billImageUri by remember { mutableStateOf<Uri?>(null) }
+    var isSaving by remember { mutableStateOf(false) }
 
     val draftItems = remember { mutableStateListOf<InwardBillItemDraft>() }
     val lineAmountTexts = remember { mutableStateMapOf<String, String>() }
@@ -2090,8 +2158,40 @@ fun InwardBillDialog(
         }
     }
 
+    val trackBoxes = categories.firstOrNull {
+        it.name.equals(selectedCategory, ignoreCase = true)
+    }?.trackBoxes ?: false
     val categoryCompanies = subCategories.filter {
         it.categoryName.equals(selectedCategory, ignoreCase = true)
+    }
+    // Ice-cream categories buy from a company; other categories use the supplier list.
+    val companyChoices = if (trackBoxes) categoryCompanies.map { it.name } else suppliers.map { it.name }
+
+    LaunchedEffect(editPurchase?.id) {
+        val purchase = editPurchase ?: return@LaunchedEffect
+        selectedCategory = purchase.category
+        selectedBrand = purchase.brand
+        billNumber = purchase.billNumber
+        billDate = purchase.billDate
+        viewModel.loadPurchaseItems(purchase) { rows ->
+            draftItems.clear()
+            lineAmountTexts.clear()
+            rows.forEach { row ->
+                val draft = InwardBillItemDraft(
+                    name = row.varietyName,
+                    boxes = row.quantity,
+                    costPrice = row.costPerBox,
+                    sellingPrice = row.mrp,
+                    piecesPerBox = row.piecesPerBox
+                )
+                draftItems.add(draft)
+                lineAmountTexts[draft.id] = row.lineAmount.toString()
+            }
+            val linesSum = rows.sumOf { it.lineAmount }
+            if (kotlin.math.abs(purchase.totalAmount - linesSum) > 0.5) {
+                printedTotalText = purchase.totalAmount.toString()
+            }
+        }
     }
 
     fun appendParsedInvoice(parsed: BillScannerService.ParsedInvoiceData) {
@@ -2104,12 +2204,13 @@ fun InwardBillDialog(
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
+            billImageUri = uri
             isScanning = true
             Toast.makeText(context, "Scanning bill with Google ML Kit...", Toast.LENGTH_SHORT).show()
             BillScannerService.scanInvoiceImage(
                 context,
                 uri,
-                categoryCompanies.map { it.name },
+                companyChoices,
                 addGstToCost
             ) { success, _, parsed ->
                 isScanning = false
@@ -2123,14 +2224,12 @@ fun InwardBillDialog(
         }
     }
 
-    val trackBoxes = categories.firstOrNull {
-        it.name.equals(selectedCategory, ignoreCase = true)
-    }?.trackBoxes ?: false
     val totalBoxes = if (trackBoxes) draftItems.sumOf { it.boxes.toLong() } else 0L
     val totalCost = draftItems.sumOf { draft ->
         lineAmountTexts[draft.id]?.toDoubleOrNull()
             ?: draft.boxes.toDouble() * draft.costPrice
     }
+    val billTotal = printedTotalText.toDoubleOrNull()?.takeIf { it > 0.0 } ?: totalCost
     val totalSelling = draftItems.sumOf { it.boxes.toDouble() * it.sellingPrice }
     val totalProjectedProfit = totalSelling - totalCost
     val overallMargin = if (totalSelling > 0) (totalProjectedProfit / totalSelling) * 100.0 else 0.0
@@ -2143,7 +2242,11 @@ fun InwardBillDialog(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(viewModel.getString("inward_stock_title"), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    if (editPurchase != null) "Bill edit karein" else viewModel.getString("inward_stock_title"),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
                 IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "Close") }
             }
         },
@@ -2157,18 +2260,18 @@ fun InwardBillDialog(
                 // 1. COMPANY SELECTOR
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Ice-cream company", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(if (trackBoxes) "Ice-cream company" else "Supplier", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         if (inwardCategories.isEmpty()) {
-                            Text("Create an ice-cream type in category management first.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
-                        } else if (categoryCompanies.isEmpty()) {
+                            Text("Pehle category management mein category banayiye.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                        } else if (companyChoices.isEmpty()) {
                             Text("No company yet, add one.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                         } else {
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                items(categoryCompanies) { company ->
+                                items(companyChoices) { companyName ->
                                     FilterChip(
-                                        selected = selectedBrand.equals(company.name, ignoreCase = true),
-                                        onClick = { selectedBrand = company.name },
-                                        label = { Text(company.name, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                                        selected = selectedBrand.equals(companyName, ignoreCase = true),
+                                        onClick = { selectedBrand = companyName },
+                                        label = { Text(companyName, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                                     )
                                 }
                             }
@@ -2228,8 +2331,8 @@ fun InwardBillDialog(
                     }
                 }
 
-                // 4. PAYMENT STATUS
-                item {
+                // 4. PAYMENT STATUS (payments of an existing bill are managed from the supplier ledger)
+                if (editPurchase == null) item {
                     Text(viewModel.getString("payment_status_label"), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -2243,11 +2346,27 @@ fun InwardBillDialog(
                             onClick = { paymentStatus = "UNPAID" },
                             label = { Text(viewModel.getString("payment_status_unpaid"), fontSize = 10.sp, fontWeight = FontWeight.Bold) }
                         )
+                        FilterChip(
+                            selected = paymentStatus == "PARTIAL",
+                            onClick = { paymentStatus = "PARTIAL" },
+                            label = { Text("Partial", fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                        )
                     }
                 }
 
                 // 5. PAYMENT MODE
-                if (paymentStatus != "UNPAID") {
+                if (editPurchase == null && paymentStatus == "PARTIAL") {
+                    item {
+                        OutlinedTextField(
+                            value = paidAmountText,
+                            onValueChange = { paidAmountText = it },
+                            label = { Text("Abhi kitna diya? ₹") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+                if (editPurchase == null && paymentStatus != "UNPAID") {
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(viewModel.getString("payment_mode_label"), fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -2399,20 +2518,18 @@ fun InwardBillDialog(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                if (trackBoxes) {
-                                    OutlinedTextField(
-                                        value = draft.boxesInput,
-                                        onValueChange = {
-                                            draftItems[idx] = draft.copy(
-                                                boxesInput = it,
-                                                boxes = it.toIntOrNull() ?: 0
-                                            )
-                                        },
-                                        label = { Text("Boxes", fontSize = 9.sp) },
-                                        singleLine = true,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
+                                OutlinedTextField(
+                                    value = draft.boxesInput,
+                                    onValueChange = {
+                                        draftItems[idx] = draft.copy(
+                                            boxesInput = it,
+                                            boxes = it.toIntOrNull() ?: 0
+                                        )
+                                    },
+                                    label = { Text(if (trackBoxes) "Boxes" else "Qty", fontSize = 9.sp) },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
                                 OutlinedTextField(
                                     value = draft.costPriceInput,
                                     onValueChange = {
@@ -2453,11 +2570,18 @@ fun InwardBillDialog(
                                     singleLine = true,
                                     modifier = Modifier.weight(1f)
                                 )
-                                Text(
-                                    "Rate ₹${draft.costPrice} • MRP ₹${draft.sellingPrice}",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF16A34A)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                OutlinedTextField(
+                                    value = draft.piecesPerBoxInput,
+                                    onValueChange = {
+                                        draftItems[idx] = draft.copy(
+                                            piecesPerBoxInput = it,
+                                            piecesPerBox = it.toIntOrNull() ?: 0
+                                        )
+                                    },
+                                    label = { Text("Pcs/box (optional)", fontSize = 9.sp) },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
                                 )
                             }
                         }
@@ -2476,6 +2600,34 @@ fun InwardBillDialog(
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("+ Add Another Product Line", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        OutlinedTextField(
+                            value = printedTotalText,
+                            onValueChange = { printedTotalText = it },
+                            label = { Text("Bill par chhapa total ₹ (GST/round-off ke saath, optional)", fontSize = 11.sp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        val printed = printedTotalText.toDoubleOrNull()
+                        if (printed != null && kotlin.math.abs(printed - totalCost) > 1.0) {
+                            Text(
+                                "⚠️ Items ka total ₹${totalCost.toInt()} hai, bill total ₹${printed.toInt()} se ₹${kotlin.math.abs(printed - totalCost).toInt()} ka farak hai.",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Switch(checked = updateMenuPrice, onCheckedChange = { updateMenuPrice = it })
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Menu selling price ko bill ke MRP se update karo", fontSize = 11.sp)
+                        }
+                        if (billImageUri != null) {
+                            Text("📷 Bill photo save hogi", fontSize = 11.sp, color = Color(0xFF16A34A))
+                        }
                     }
                 }
 
@@ -2502,6 +2654,7 @@ fun InwardBillDialog(
                                     fontSize = 14.sp
                                 )
                             }
+                            if (isOwner) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("अनुमानित कुल बिक्री (MRP):", color = Color(0xFF94A3B8), fontSize = 11.sp)
                                 Text(
@@ -2521,6 +2674,7 @@ fun InwardBillDialog(
                                     fontSize = 14.sp
                                 )
                             }
+                            }
                         }
                     }
                 }
@@ -2529,37 +2683,46 @@ fun InwardBillDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (selectedBrand.isBlank() || selectedCategory.isBlank() || !trackBoxes) {
-                        Toast.makeText(context, "Choose an ice-cream company and category.", Toast.LENGTH_SHORT).show()
+                    if (isSaving) return@Button
+                    if (selectedBrand.isBlank() || selectedCategory.isBlank()) {
+                        Toast.makeText(context, "Supplier/company aur category chuniye.", Toast.LENGTH_SHORT).show()
                         return@Button
                     }
                     if (draftItems.isEmpty() || draftItems.any {
-                            it.name.isBlank() || (trackBoxes && it.boxes !in 1..9999) ||
-                                it.costPrice !in 0.01..100000.0 || it.sellingPrice !in 0.01..100000.0
+                            it.name.isBlank() || it.boxes !in 1..MAX_INWARD_QTY ||
+                                it.costPrice !in 0.01..100000.0 || it.sellingPrice !in 0.0..100000.0
                         }) {
-                        Toast.makeText(context, "Complete each item with a name, quantity, cost and selling price.", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "Har item ka naam, quantity, cost aur MRP bhariye.", Toast.LENGTH_LONG).show()
                         return@Button
                     }
-                    val paid = if (paymentStatus == "PAID") totalCost else if (paymentStatus == "PARTIAL") {
-                        paidAmountText.toDoubleOrNull()?.takeIf { it in 0.0..totalCost }
-                    } else {
-                        0.0
+                    val paid: Double? = when {
+                        editPurchase != null -> 0.0
+                        paymentStatus == "PAID" -> billTotal
+                        paymentStatus == "PARTIAL" -> paidAmountText.toDoubleOrNull()?.takeIf { it in 0.0..billTotal }
+                        else -> 0.0
                     }
                     if (paid == null) {
-                        Toast.makeText(context, "Enter a valid amount paid between ₹0 and the bill total.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Paid amount ₹0 se bill total ke beech bhariye.", Toast.LENGTH_SHORT).show()
                         return@Button
                     }
-                    viewModel.saveInwardStockPurchase(
-                        brand = selectedBrand,
-                        category = selectedCategory,
-                        billNumber = billNumber,
-                        billDate = billDate,
-                        totalAmount = totalCost,
-                        paidAmount = paid,
-                        paymentStatus = paymentStatus,
-                        paymentMode = paymentMode,
-                        draftItems = draftItems.map { if (trackBoxes) it else it.copy(boxes = 1) }
+                    isSaving = true
+                    val savedImagePath = billImageUri?.let { BillImages.copyToAppStorage(context, it) }
+                    viewModel.saveInwardPurchase(
+                        InwardRequest(
+                            purchaseId = editPurchase?.id,
+                            brand = selectedBrand,
+                            category = selectedCategory,
+                            billNumber = billNumber,
+                            billDate = billDate,
+                            printedTotal = printedTotalText.toDoubleOrNull()?.takeIf { it > 0.0 },
+                            paidAmount = paid,
+                            paymentMode = paymentMode,
+                            items = draftItems.map { it.copy(lineAmount = lineAmountTexts[it.id]?.toDoubleOrNull()) },
+                            billImagePath = savedImagePath,
+                            updateMenuPrice = updateMenuPrice
+                        )
                     ) { error ->
+                        isSaving = false
                         if (error == null) {
                             Toast.makeText(context, viewModel.getString("inward_success_msg"), Toast.LENGTH_LONG).show()
                             onDismiss()
@@ -2568,9 +2731,10 @@ fun InwardBillDialog(
                         }
                     }
                 },
+                enabled = !isSaving,
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A))
             ) {
-                Text("Save Inward Stock & Update Company Boxes")
+                Text(if (editPurchase != null) "Bill update karein" else "Save Inward Stock & Update Company Boxes")
             }
         },
         dismissButton = {
@@ -2581,7 +2745,7 @@ fun InwardBillDialog(
     if (showAddCompany) {
         AlertDialog(
             onDismissRequest = { showAddCompany = false },
-            title = { Text("Add ice-cream company") },
+            title = { Text(if (trackBoxes) "Add ice-cream company" else "Add supplier") },
             text = {
                 OutlinedTextField(
                     value = newCompanyName,
@@ -2595,8 +2759,15 @@ fun InwardBillDialog(
                     onClick = {
                         val companyName = newCompanyName.trim()
                         if (companyName.isNotBlank() && selectedCategory.isNotBlank()) {
-                            viewModel.addSubCategory(selectedCategory, companyName, 0.0) {
-                                selectedBrand = it.name
+                            if (trackBoxes) {
+                                viewModel.addSubCategory(selectedCategory, companyName, 0.0) {
+                                    selectedBrand = it.name
+                                    newCompanyName = ""
+                                    showAddCompany = false
+                                }
+                            } else {
+                                viewModel.saveSupplier(companyName, "", "", "")
+                                selectedBrand = companyName
                                 newCompanyName = ""
                                 showAddCompany = false
                             }
@@ -2876,6 +3047,8 @@ fun InventoryScreen(viewModel: ShopViewModel) {
                             ) {
                                 Text("Open", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
+
+                            WastageButton(viewModel = viewModel, stock = stock)
                         }
                     }
                 }
@@ -3049,12 +3222,12 @@ fun KhataScreen(viewModel: ShopViewModel) {
                     Column(modifier = Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(customer.name, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                            if (customer.outstandingDebt >= 400) {
+                            if (isKhataOverdue(customer)) {
                                 Surface(
                                     color = Color(0xFFFEE2E2),
                                     shape = RoundedCornerShape(4.dp)
                                 ) {
-                                    Text("⚠️ 7+ दिन पुराना", color = Color(0xFFDC2626), fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
+                                    Text("⚠️ Due date nikal gayi", color = Color(0xFFDC2626), fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp))
                                 }
                             }
                         }
@@ -3062,6 +3235,7 @@ fun KhataScreen(viewModel: ShopViewModel) {
                             Text("📱 ${customer.phone}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Text("Due: ₹${customer.outstandingDebt.toInt()}", color = Color(0xFFDC2626), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+                        if (customer.outstandingDebt > 0) KhataDueDateRow(viewModel = viewModel, customer = customer)
                     }
 
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -3183,13 +3357,17 @@ fun HisaabScreen(
     val context = LocalContext.current
     var activeSubTab by remember { mutableStateOf(0) }
 
+    val isOwner by viewModel.isOwner.collectAsState()
     val subTabs = listOf(
         viewModel.getString("day_closing_title"),
         viewModel.getString("daily_expenses"),
         viewModel.getString("paytm_settlement_title"),
         viewModel.getString("supplier_bills_title"),
-        "Category & Menu Setup"
+        "Category & Menu Setup",
+        "Analytics"
     )
+    // Staff must not see supplier ledger or profit analytics.
+    val visibleTabs = subTabs.indices.filter { isOwner || (it != 3 && it != 5) }
 
     Column(
         modifier = Modifier
@@ -3197,7 +3375,7 @@ fun HisaabScreen(
             .padding(14.dp)
     ) {
         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(subTabs.size) { index ->
+            items(visibleTabs) { index ->
                 FilterChip(
                     selected = activeSubTab == index,
                     onClick = { activeSubTab = index },
@@ -3212,8 +3390,9 @@ fun HisaabScreen(
             0 -> DayEndClosingView(viewModel, context)
             1 -> DailyExpensesView(viewModel)
             2 -> PaytmSettlementView(viewModel)
-            3 -> SupplierPurchasesView(viewModel, context)
+            3 -> if (isOwner) SupplierPurchasesView(viewModel, context)
             4 -> MenuAndCategoryManagementView(viewModel)
+            5 -> if (isOwner) AnalyticsScreen(viewModel)
         }
     }
 }
@@ -3255,7 +3434,7 @@ fun DayEndClosingView(viewModel: ShopViewModel, context: Context) {
                         Text("+ ₹${udharCashRepay.toInt()}", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF16A34A))
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("• (-) Cash Expenses:", fontSize = 12.sp, color = Color(0xFFDC2626))
+                        Text("• (-) Cash kharcha + supplier payment:", fontSize = 12.sp, color = Color(0xFFDC2626))
                         Text("- ₹${cashExpenses.toInt()}", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFFDC2626))
                     }
 
@@ -3554,146 +3733,6 @@ fun PaytmSettlementView(viewModel: ShopViewModel) {
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Update Settlement")
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ---------------- SUBVIEW 4: SUPPLIER PURCHASES & DISTRIBUTOR BILLS ----------------
-@Composable
-fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
-    val purchases by viewModel.supplierPurchases.collectAsState()
-    val totalDebt by viewModel.totalSupplierDebt.collectAsState()
-    val categories by viewModel.categories.collectAsState()
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        // Outstanding Debt Card
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF7F1D1D)),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text("सप्लायर उधारी (Total Supplier Outstanding)", color = Color(0xFFFECDD3), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text("₹${totalDebt.toInt()} बाकी", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text("सप्लायर को चुकाई जाने वाली बकाया रकम।", color = Color(0xFFFEE2E2), fontSize = 11.sp)
-                }
-            }
-        }
-
-        if (purchases.isEmpty()) {
-            item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        "अभी तक कोई सप्लायर इनवॉइस नहीं जोड़ा गया है।\nगोदाम स्टॉक स्क्रीन में '+ नया माल (बिल अपलोड)' दबाकर सप्लायर का बिल जोड़ें।",
-                        modifier = Modifier.padding(16.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 12.sp
-                    )
-                }
-            }
-        } else {
-            items(purchases) { purchase ->
-                val isPaid = purchase.paymentStatus == "PAID"
-                val isUnpaid = purchase.paymentStatus == "UNPAID"
-                val balance = purchase.totalAmount - purchase.paidAmount
-                val trackBoxes = categories.firstOrNull {
-                    it.name.equals(purchase.category, ignoreCase = true)
-                }?.trackBoxes ?: false
-
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Text(purchase.brand, fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
-                                    Surface(
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = MaterialTheme.colorScheme.primaryContainer
-                                    ) {
-                                        Text(purchase.category, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
-                                    }
-                                }
-                                Text("Bill #${purchase.billNumber} • ${purchase.billDate}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (isPaid) Color(0xFF16A34A).copy(alpha = 0.15f) else Color(0xFFDC2626).copy(alpha = 0.15f)
-                            ) {
-                                Text(
-                                    if (isPaid) "✅ Full Paid" else if (isUnpaid) "❌ Unpaid (Udhar)" else "⚠️ Partial",
-                                    color = if (isPaid) Color(0xFF16A34A) else Color(0xFFDC2626),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                )
-                            }
-                        }
-
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-
-                        Text(
-                            if (trackBoxes) purchase.itemsSummary else purchase.itemsSummary.replace(
-                                Regex("\\s*\\(\\d+\\s+Boxes?\\)", RegexOption.IGNORE_CASE),
-                                ""
-                            ),
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    if (trackBoxes) "कुल बिल: ₹${purchase.totalAmount.toInt()} (${purchase.totalBoxes} Boxes)"
-                                    else "कुल बिल: ₹${purchase.totalAmount.toInt()}",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                if (!isPaid) {
-                                    Text("बकाया: ₹${balance.toInt()} बाकी", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
-                                }
-                            }
-
-                            if (!isPaid) {
-                                Button(
-                                    onClick = {
-                                        viewModel.markSupplierBillPaid(purchase)
-                                        Toast.makeText(context, "Bill marked as Full Paid!", Toast.LENGTH_SHORT).show()
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Text("Mark as Paid", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
                     }
                 }
             }
