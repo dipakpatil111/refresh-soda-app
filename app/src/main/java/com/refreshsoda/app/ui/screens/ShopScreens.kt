@@ -3150,7 +3150,7 @@ fun InventoryScreen(
                 ) {
                     Column(
                         modifier = Modifier.padding(20.dp),
-                        horizontalAlignment = Alignment.CenterVertically
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text("Abhi koi ice-cream company nahi hai.", fontSize = 13.sp, color = Color(0xFF64748B))
                         Spacer(modifier = Modifier.height(8.dp))
@@ -4000,7 +4000,7 @@ fun WhatsAppOrderDialog(
             if (groupedByCompany.isEmpty()) {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    horizontalAlignment = Alignment.CenterVertically
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text("✅ Sabhi items ka stock theek hai!", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
                     Text("Kisi bhi variety mein alert limit se kam stock nahi hai.", fontSize = 11.sp, color = Color(0xFF64748B))
