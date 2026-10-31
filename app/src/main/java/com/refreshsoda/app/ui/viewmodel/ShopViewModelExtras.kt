@@ -34,7 +34,9 @@ data class InwardRequest(
     /** Path of the bill photo already copied into app storage. */
     val billImagePath: String? = null,
     /** Also overwrite the menu selling price of matching products with the bill MRP. */
-    val updateMenuPrice: Boolean = false
+    val updateMenuPrice: Boolean = false,
+    /** Whether to add boxes to inventory or just keep bill as purchase record. */
+    val updateStockBoxes: Boolean = true
 )
 
 fun paymentStatusFor(total: Double, paid: Double): String = when {
@@ -119,7 +121,7 @@ fun ShopViewModel.saveInwardPurchase(request: InwardRequest, onComplete: (String
             }
             val trackBoxes = category.trackBoxes
             val items = request.items
-            if (items.isEmpty() || items.any {
+            if (items.isNotEmpty() && items.any {
                     it.name.isBlank() || it.boxes !in 1..MAX_INWARD_QTY ||
                         it.costPrice !in 0.01..100000.0 || it.sellingPrice !in 0.0..100000.0
                 }
@@ -127,7 +129,7 @@ fun ShopViewModel.saveInwardPurchase(request: InwardRequest, onComplete: (String
                 onComplete("Har item ka naam, quantity (1-$MAX_INWARD_QTY) aur cost bhariye.")
                 return@launch
             }
-            val linesTotal = items.sumOf { it.lineAmount ?: it.lineTotal }
+            val linesTotal = if (items.isNotEmpty()) items.sumOf { it.lineAmount ?: it.lineTotal } else 0.0
             val total = request.printedTotal ?: linesTotal
             if (total <= 0.0) {
                 onComplete("Bill ka total zero nahi ho sakta.")
@@ -205,7 +207,7 @@ fun ShopViewModel.saveInwardPurchase(request: InwardRequest, onComplete: (String
 
                 dao.insertPurchaseItems(itemRows)
 
-                if (trackBoxes) {
+                if (trackBoxes && request.updateStockBoxes) {
                     itemRows
                         .groupBy { it.varietyName.lowercase(Locale.getDefault()) }
                         .values
@@ -257,8 +259,8 @@ fun ShopViewModel.saveInwardPurchase(request: InwardRequest, onComplete: (String
                     paidAmount = paid,
                     paymentStatus = paymentStatusFor(total, paid),
                     paymentMode = oldPurchase?.paymentMode ?: request.paymentMode,
-                    totalBoxes = if (trackBoxes) itemRows.sumOf { it.quantity } else 0,
-                    itemsSummary = summary,
+                    totalBoxes = if (trackBoxes && request.updateStockBoxes) itemRows.sumOf { it.quantity } else 0,
+                    itemsSummary = if (itemRows.isNotEmpty()) summary else "Bill #${billNumber} (Financial Record) - Total ₹${total.toInt()}",
                     billImageUri = request.billImagePath ?: oldPurchase?.billImageUri,
                     timestamp = oldPurchase?.timestamp ?: System.currentTimeMillis()
                 )

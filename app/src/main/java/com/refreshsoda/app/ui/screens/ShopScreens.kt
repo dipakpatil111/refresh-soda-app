@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -25,8 +26,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,6 +48,8 @@ import com.refreshsoda.app.ui.i18n.AppLanguage
 import com.refreshsoda.app.ui.theme.AppThemeMode
 import com.refreshsoda.app.data.model.Offer
 import com.refreshsoda.app.data.model.IceCreamVarietyStock
+import com.refreshsoda.app.data.model.VarietyInsightsItem
+import com.refreshsoda.app.data.model.CompanyInsightsItem
 import com.refreshsoda.app.ui.viewmodel.ShopViewModel
 import com.refreshsoda.app.ui.viewmodel.InwardRequest
 import com.refreshsoda.app.ui.viewmodel.MAX_INWARD_QTY
@@ -75,6 +80,92 @@ fun sendWhatsAppMessage(context: Context, phone: String?, message: String) {
     } catch (e: Exception) {
         Toast.makeText(context, "WhatsApp error: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
     }
+}
+
+// ==============================================================================
+// APP UI UTILITIES: CLEAN, NON-OVERFLOWING TEXT FIELDS & FUZZY MATCHER
+// ==============================================================================
+@Composable
+fun AppTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    label: String? = null,
+    placeholder: String? = null,
+    leadingIcon: ImageVector? = null,
+    trailingIcon: @Composable (() -> Unit)? = null,
+    singleLine: Boolean = true,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    isError: Boolean = false,
+    readOnly: Boolean = false,
+    enabled: Boolean = true
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier.fillMaxWidth(),
+        enabled = enabled,
+        readOnly = readOnly,
+        label = label?.let { { Text(it, fontSize = 11.sp, maxLines = 1) } },
+        placeholder = placeholder?.let { { Text(it, fontSize = 11.sp, color = Color(0xFF94A3B8), maxLines = 1) } },
+        leadingIcon = leadingIcon?.let { { Icon(it, contentDescription = null, modifier = Modifier.size(18.dp)) } },
+        trailingIcon = trailingIcon,
+        singleLine = singleLine,
+        isError = isError,
+        shape = RoundedCornerShape(12.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = Color(0xFFF8FAFC),
+            unfocusedContainerColor = Color(0xFFF8FAFC),
+            disabledContainerColor = Color(0xFFF1F5F9),
+            focusedBorderColor = Color(0xFF366A55),
+            unfocusedBorderColor = Color(0xFFCBD5E1)
+        ),
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType)
+    )
+}
+
+fun levenshteinDistance(s1: String, s2: String): Int {
+    val dp = Array(s1.length + 1) { IntArray(s2.length + 1) }
+    for (i in 0..s1.length) dp[i][0] = i
+    for (j in 0..s2.length) dp[0][j] = j
+    for (i in 1..s1.length) {
+        for (j in 1..s2.length) {
+            val cost = if (s1[i - 1] == s2[j - 1]) 0 else 1
+            dp[i][j] = minOf(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost)
+        }
+    }
+    return dp[s1.length][s2.length]
+}
+
+fun findBestMatchingVariety(scannedText: String, candidateVarieties: List<String>): Pair<String?, Float> {
+    if (candidateVarieties.isEmpty() || scannedText.isBlank()) return Pair(null, 0f)
+    val cleanScanned = scannedText.lowercase(Locale.getDefault()).replace(Regex("[^a-z0-9]"), "")
+    var bestMatch: String? = null
+    var bestScore = 0f
+
+    for (candidate in candidateVarieties) {
+        val cleanCandidate = candidate.lowercase(Locale.getDefault()).replace(Regex("[^a-z0-9]"), "")
+        if (cleanCandidate == cleanScanned) {
+            return Pair(candidate, 1.0f)
+        }
+        if (cleanScanned.contains(cleanCandidate) || cleanCandidate.contains(cleanScanned)) {
+            val score = cleanCandidate.length.toFloat() / maxOf(cleanScanned.length, cleanCandidate.length).toFloat()
+            if (score > bestScore) {
+                bestScore = score
+                bestMatch = candidate
+            }
+        }
+        val dist = levenshteinDistance(cleanScanned, cleanCandidate)
+        val maxLen = maxOf(cleanScanned.length, cleanCandidate.length)
+        if (maxLen > 0) {
+            val ratio = 1f - (dist.toFloat() / maxLen.toFloat())
+            if (ratio > bestScore) {
+                bestScore = ratio
+                bestMatch = candidate
+            }
+        }
+    }
+    return Pair(bestMatch, bestScore)
 }
 
 // ==============================================================================
@@ -616,7 +707,8 @@ fun SettingsScreen(viewModel: ShopViewModel) {
 @Composable
 fun DashboardScreen(
     viewModel: ShopViewModel,
-    onNavigateToPOS: () -> Unit = {}
+    onNavigateToPOS: () -> Unit = {},
+    onNavigateToMaalAavak: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val totalSales by viewModel.totalSalesAmount.collectAsState()
@@ -747,7 +839,7 @@ fun DashboardScreen(
                 }
 
                 Button(
-                    onClick = { showInwardDialog = true },
+                    onClick = { onNavigateToMaalAavak() },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f)
@@ -2129,6 +2221,7 @@ fun InwardBillDialog(
     val inwardCategories = categories
     val suppliers by viewModel.suppliers.collectAsState()
     val isOwner by viewModel.isOwner.collectAsState()
+    val varietyStocks by viewModel.iceCreamVarietyStock.collectAsState()
 
     var selectedBrand by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("") }
@@ -2144,6 +2237,7 @@ fun InwardBillDialog(
     var addGstToCost by remember { mutableStateOf(false) }
     var printedTotalText by remember { mutableStateOf("") }
     var updateMenuPrice by remember { mutableStateOf(false) }
+    var updateStockBoxes by remember { mutableStateOf(true) }
     var billImageUri by remember { mutableStateOf<Uri?>(null) }
     var isSaving by remember { mutableStateOf(false) }
 
@@ -2166,6 +2260,13 @@ fun InwardBillDialog(
     }
     // Ice-cream categories buy from a company; other categories use the supplier list.
     val companyChoices = if (trackBoxes) categoryCompanies.map { it.name } else suppliers.map { it.name }
+
+    val companyVarieties = remember(varietyStocks, selectedBrand, selectedCategory) {
+        varietyStocks.filter {
+            it.categoryName.equals(selectedCategory, ignoreCase = true) &&
+            it.companyName.equals(selectedBrand, ignoreCase = true)
+        }.map { it.varietyName }
+    }
 
     LaunchedEffect(editPurchase?.id) {
         val purchase = editPurchase ?: return@LaunchedEffect
@@ -2314,24 +2415,22 @@ fun InwardBillDialog(
                 // 3. BILL NUMBER & DATE
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        OutlinedTextField(
+                        AppTextField(
                             value = billNumber,
                             onValueChange = { billNumber = it },
-                            label = { Text(viewModel.getString("bill_number_label")) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
+                            label = viewModel.getString("bill_number_label"),
+                            singleLine = true
                         )
-                        OutlinedTextField(
+                        AppTextField(
                             value = billDate,
                             onValueChange = { billDate = it },
-                            label = { Text(viewModel.getString("bill_date_label")) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
+                            label = viewModel.getString("bill_date_label"),
+                            singleLine = true
                         )
                     }
                 }
 
-                // 4. PAYMENT STATUS (payments of an existing bill are managed from the supplier ledger)
+                // 4. PAYMENT STATUS
                 if (editPurchase == null) item {
                     Text(viewModel.getString("payment_status_label"), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.height(4.dp))
@@ -2354,15 +2453,15 @@ fun InwardBillDialog(
                     }
                 }
 
-                // 5. PAYMENT MODE
+                // 5. PAYMENT MODE & GALLA NOTE
                 if (editPurchase == null && paymentStatus == "PARTIAL") {
                     item {
-                        OutlinedTextField(
+                        AppTextField(
                             value = paidAmountText,
                             onValueChange = { paidAmountText = it },
-                            label = { Text("Abhi kitna diya? ₹") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
+                            label = "Abhi kitna diya? ₹",
+                            keyboardType = KeyboardType.Decimal,
+                            singleLine = true
                         )
                     }
                 }
@@ -2379,6 +2478,18 @@ fun InwardBillDialog(
                                     )
                                 }
                             }
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFFF1F5F9),
+                                modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+                            ) {
+                                Text(
+                                    "💡 Note: Sirf Cash payment aaj ke galle (Day Closing) se minus hoga. UPI/Bank galle se nahi katega.",
+                                    fontSize = 10.sp,
+                                    color = Color(0xFF475569),
+                                    modifier = Modifier.padding(8.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -2394,7 +2505,7 @@ fun InwardBillDialog(
                             Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                if (draftItems.isEmpty()) "Upload Bill Image" else "Upload second page (append)",
+                                if (draftItems.isEmpty()) "Upload Bill Image" else "Upload second page",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -2435,11 +2546,12 @@ fun InwardBillDialog(
                 if (showPasteSection) {
                     item {
                         Column {
-                            OutlinedTextField(
+                            AppTextField(
                                 value = customBillText,
                                 onValueChange = { customBillText = it },
-                                placeholder = { Text("Paste invoice rows containing HSN, description, MRP, Qty, UOM, Rate, tax and Amount", fontSize = 11.sp) },
-                                modifier = Modifier.fillMaxWidth().height(90.dp)
+                                placeholder = "Paste invoice rows containing description, MRP, Qty, Rate, tax and Amount",
+                                singleLine = false,
+                                modifier = Modifier.height(90.dp)
                             )
                             Button(
                                 onClick = {
@@ -2471,7 +2583,44 @@ fun InwardBillDialog(
                             checked = addGstToCost,
                             onCheckedChange = { addGstToCost = it }
                         )
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text("Add 5% GST to ex-GST cost rate", fontSize = 11.sp)
+                    }
+                }
+
+                // GODOWN STOCK CHECKBOX
+                if (trackBoxes) {
+                    item {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (updateStockBoxes) Color(0xFFF0FDF4) else Color(0xFFFFFBEB),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp).fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "📦 Is bill ke boxes godown stock mein jodna hai?",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (updateStockBoxes) Color(0xFF166534) else Color(0xFF92400E)
+                                    )
+                                    Text(
+                                        if (updateStockBoxes) "Haan, bill ke boxes company godown stock mein add honge."
+                                        else "Nahi, sirf bill hisaab mein record hoga, boxes stock mein nahi badhenge.",
+                                        fontSize = 10.sp,
+                                        color = Color(0xFF64748B)
+                                    )
+                                }
+                                Switch(
+                                    checked = updateStockBoxes,
+                                    onCheckedChange = { updateStockBoxes = it }
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -2487,6 +2636,12 @@ fun InwardBillDialog(
 
                 items(draftItems, key = { it.id }) { draft ->
                     val idx = draftItems.indexOfFirst { it.id == draft.id }
+                    val bestMatch = remember(draft.name, companyVarieties) {
+                        if (trackBoxes && draft.name.isNotBlank() && companyVarieties.none { it.equals(draft.name, ignoreCase = true) }) {
+                            findBestMatchingVariety(draft.name, companyVarieties).takeIf { it.second >= 0.4f }
+                        } else null
+                    }
+
                     Surface(
                         shape = RoundedCornerShape(10.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
@@ -2498,10 +2653,10 @@ fun InwardBillDialog(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                OutlinedTextField(
+                                AppTextField(
                                     value = draft.name,
                                     onValueChange = { draftItems[idx] = draft.copy(name = it) },
-                                    label = { Text("Product name", fontSize = 9.sp) },
+                                    label = if (trackBoxes) "Variety / Product name" else "Product name",
                                     singleLine = true,
                                     modifier = Modifier.weight(1f)
                                 )
@@ -2513,12 +2668,47 @@ fun InwardBillDialog(
                                 }
                             }
 
+                            if (bestMatch?.first != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Color(0xFFE0F2FE),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            draftItems[idx] = draft.copy(name = bestMatch.first!!)
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text("💡 Match:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0369A1))
+                                        Text("${bestMatch.first} (Tap karke select karein)", fontSize = 10.sp, color = Color(0xFF0284C7))
+                                    }
+                                }
+                            }
+
+                            if (trackBoxes && draft.name.isBlank() && companyVarieties.isNotEmpty()) {
+                                Column(modifier = Modifier.padding(top = 2.dp)) {
+                                    Text("Maujood varieties mein se chunein:", fontSize = 9.sp, color = Color(0xFF64748B))
+                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        items(companyVarieties) { cv ->
+                                            SuggestionChip(
+                                                onClick = { draftItems[idx] = draft.copy(name = cv) },
+                                                label = { Text(cv, fontSize = 9.sp) }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                OutlinedTextField(
+                                AppTextField(
                                     value = draft.boxesInput,
                                     onValueChange = {
                                         draftItems[idx] = draft.copy(
@@ -2526,11 +2716,11 @@ fun InwardBillDialog(
                                             boxes = it.toIntOrNull() ?: 0
                                         )
                                     },
-                                    label = { Text(if (trackBoxes) "Boxes" else "Qty", fontSize = 9.sp) },
-                                    singleLine = true,
+                                    label = if (trackBoxes) "Boxes" else "Qty",
+                                    keyboardType = KeyboardType.Number,
                                     modifier = Modifier.weight(1f)
                                 )
-                                OutlinedTextField(
+                                AppTextField(
                                     value = draft.costPriceInput,
                                     onValueChange = {
                                         draftItems[idx] = draft.copy(
@@ -2538,11 +2728,11 @@ fun InwardBillDialog(
                                             costPrice = it.toDoubleOrNull() ?: 0.0
                                         )
                                     },
-                                    label = { Text("Cost ₹", fontSize = 9.sp) },
-                                    singleLine = true,
+                                    label = "Cost ₹",
+                                    keyboardType = KeyboardType.Decimal,
                                     modifier = Modifier.weight(1f)
                                 )
-                                OutlinedTextField(
+                                AppTextField(
                                     value = draft.sellingPriceInput,
                                     onValueChange = {
                                         draftItems[idx] = draft.copy(
@@ -2550,8 +2740,8 @@ fun InwardBillDialog(
                                             sellingPrice = it.toDoubleOrNull() ?: 0.0
                                         )
                                     },
-                                    label = { Text("MRP ₹", fontSize = 9.sp) },
-                                    singleLine = true,
+                                    label = "MRP ₹",
+                                    keyboardType = KeyboardType.Decimal,
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -2561,17 +2751,17 @@ fun InwardBillDialog(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                OutlinedTextField(
+                                AppTextField(
                                     value = lineAmountTexts[draft.id]
                                         ?.takeIf { it.isNotBlank() }
                                         ?: (draft.boxes * draft.costPrice).toString(),
                                     onValueChange = { lineAmountTexts[draft.id] = it },
-                                    label = { Text("Amount ₹", fontSize = 9.sp) },
-                                    singleLine = true,
+                                    label = "Amount ₹",
+                                    keyboardType = KeyboardType.Decimal,
                                     modifier = Modifier.weight(1f)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                OutlinedTextField(
+                                AppTextField(
                                     value = draft.piecesPerBoxInput,
                                     onValueChange = {
                                         draftItems[idx] = draft.copy(
@@ -2579,8 +2769,8 @@ fun InwardBillDialog(
                                             piecesPerBox = it.toIntOrNull() ?: 0
                                         )
                                     },
-                                    label = { Text("Pcs/box (optional)", fontSize = 9.sp) },
-                                    singleLine = true,
+                                    label = "Pcs/box",
+                                    keyboardType = KeyboardType.Number,
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -2605,17 +2795,17 @@ fun InwardBillDialog(
 
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        OutlinedTextField(
+                        AppTextField(
                             value = printedTotalText,
                             onValueChange = { printedTotalText = it },
-                            label = { Text("Bill par chhapa total ₹ (GST/round-off ke saath, optional)", fontSize = 11.sp) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
+                            label = "Bill par chhapa total ₹ (optional)",
+                            keyboardType = KeyboardType.Decimal,
+                            singleLine = true
                         )
                         val printed = printedTotalText.toDoubleOrNull()
                         if (printed != null && kotlin.math.abs(printed - totalCost) > 1.0) {
                             Text(
-                                "⚠️ Items ka total ₹${totalCost.toInt()} hai, bill total ₹${printed.toInt()} se ₹${kotlin.math.abs(printed - totalCost).toInt()} ka farak hai.",
+                                "⚠️ Items ka total ₹${totalCost.toInt()} hai, bill total ₹${printed.toInt()} se farak hai.",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.error
                             )
@@ -2655,25 +2845,25 @@ fun InwardBillDialog(
                                 )
                             }
                             if (isOwner) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("अनुमानित कुल बिक्री (MRP):", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                                Text(
-                                    "₹${String.format(Locale.getDefault(), "%.2f", totalSelling)}",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
-                                )
-                            }
-                            HorizontalDivider(color = Color(0xFF334155), modifier = Modifier.padding(vertical = 4.dp))
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("इस माल पर अनुमानित शुद्ध मुनाफ़ा:", color = Color(0xFF4ADE80), fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                Text(
-                                    "+₹${String.format(Locale.getDefault(), "%.2f", totalProjectedProfit)} (${overallMargin.toInt()}%)",
-                                    color = Color(0xFF4ADE80),
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 14.sp
-                                )
-                            }
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("अनुमानित कुल बिक्री (MRP):", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                    Text(
+                                        "₹${String.format(Locale.getDefault(), "%.2f", totalSelling)}",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                                HorizontalDivider(color = Color(0xFF334155), modifier = Modifier.padding(vertical = 4.dp))
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("इस माल पर अनुमानित शुद्ध मुनाफ़ा:", color = Color(0xFF4ADE80), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Text(
+                                        "+₹${String.format(Locale.getDefault(), "%.2f", totalProjectedProfit)} (${overallMargin.toInt()}%)",
+                                        color = Color(0xFF4ADE80),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 14.sp
+                                    )
+                                }
                             }
                         }
                     }
@@ -2719,7 +2909,8 @@ fun InwardBillDialog(
                             paymentMode = paymentMode,
                             items = draftItems.map { it.copy(lineAmount = lineAmountTexts[it.id]?.toDoubleOrNull()) },
                             billImagePath = savedImagePath,
-                            updateMenuPrice = updateMenuPrice
+                            updateMenuPrice = updateMenuPrice,
+                            updateStockBoxes = updateStockBoxes
                         )
                     ) { error ->
                         isSaving = false
@@ -2734,7 +2925,7 @@ fun InwardBillDialog(
                 enabled = !isSaving,
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A))
             ) {
-                Text(if (editPurchase != null) "Bill update karein" else "Save Inward Stock & Update Company Boxes")
+                Text(if (editPurchase != null) "Bill update karein" else "Save Inward Stock")
             }
         },
         dismissButton = {
@@ -2747,10 +2938,10 @@ fun InwardBillDialog(
             onDismissRequest = { showAddCompany = false },
             title = { Text(if (trackBoxes) "Add ice-cream company" else "Add supplier") },
             text = {
-                OutlinedTextField(
+                AppTextField(
                     value = newCompanyName,
                     onValueChange = { newCompanyName = it },
-                    label = { Text("Company name") },
+                    label = "Company name",
                     singleLine = true
                 )
             },
@@ -2784,34 +2975,50 @@ fun InwardBillDialog(
 }
 
 // ==============================================================================
-// 4. GODOWN BOX-ONLY STOCK TRACKER SCREEN
+// 4. GODOWN BOX-ONLY STOCK TRACKER SCREEN & DIALOGS
 // ==============================================================================
 @Composable
-fun InventoryScreen(viewModel: ShopViewModel) {
+fun InventoryScreen(
+    viewModel: ShopViewModel,
+    onNavigateToMaalAavak: () -> Unit = {}
+) {
+    val context = LocalContext.current
     val categories by viewModel.categories.collectAsState()
     val subCategories by viewModel.subCategories.collectAsState()
     val varietyStocks by viewModel.iceCreamVarietyStock.collectAsState()
     val iceCreamProfit by viewModel.iceCreamProfitStats.collectAsState()
 
-    var selectedFilter by remember { mutableStateOf("All") }
-    var showAddStockDialog by remember { mutableStateOf(false) }
-    var showInwardDialog by remember { mutableStateOf(false) }
-    var selectedCompanyForStock by remember { mutableStateOf<SubCategory?>(null) }
-    var stockVarietyName by remember { mutableStateOf("") }
-    var stockCountText by remember { mutableStateOf("1") }
+    var searchQuery by remember { mutableStateOf("") }
+    var expandedCompanies by remember { mutableStateOf(setOf<String>()) }
+    var selectedCategoryFilter by remember { mutableStateOf("All") }
 
+    // Dialog states
+    var addVarietiesTarget by remember { mutableStateOf<Pair<String, String>?>(null) } // (category, company)
+    var mergeTarget by remember { mutableStateOf<Pair<String, String>?>(null) } // (category, company)
+    var stockForCorrection by remember { mutableStateOf<IceCreamVarietyStock?>(null) }
+    var stockForDelete by remember { mutableStateOf<IceCreamVarietyStock?>(null) }
+    var showInsightsDialog by remember { mutableStateOf(false) }
+    var showWhatsAppOrderDialog by remember { mutableStateOf(false) }
+    var showInwardDialog by remember { mutableStateOf(false) }
+
+    val boxTrackedCategories = categories.filter { it.trackBoxes }
     val boxTrackedSubCategories = subCategories.filter { subCategory ->
         categories.any { it.trackBoxes && it.name.equals(subCategory.categoryName, ignoreCase = true) }
     }
-    val filterOptions = listOf("All") + categories.filter { it.trackBoxes }.map { it.name }
-    val filtered = varietyStocks.filter { stock ->
-        boxTrackedSubCategories.any {
-            it.categoryName.equals(stock.categoryName, ignoreCase = true) &&
-                it.name.equals(stock.companyName, ignoreCase = true)
-        } && (selectedFilter == "All" ||
-            stock.categoryName.equals(selectedFilter, ignoreCase = true))
+
+    val totalBoxes = varietyStocks.sumOf { it.sealedBoxes }
+    val lowStockCount = varietyStocks.count { it.varietyName != UNASSIGNED_VARIETY && it.sealedBoxes <= it.lowStockLimit }
+
+    val companiesList = remember(boxTrackedSubCategories, varietyStocks) {
+        val names = (boxTrackedSubCategories.map { it.name } + varietyStocks.map { it.companyName })
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+            .sorted()
+        names
     }
-    val totalBoxes = boxTrackedSubCategories.sumOf { it.sealedBoxes }
+
+    val effectiveExpanded = remember(expandedCompanies, searchQuery, companiesList) {
+        if (searchQuery.isNotBlank()) companiesList.toSet() else expandedCompanies
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -2819,236 +3026,380 @@ fun InventoryScreen(viewModel: ShopViewModel) {
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // ICE-CREAM PROFIT ANALYTICS CARD
+        // TOP ACTION BAR
         item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(18.dp),
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("🍨", fontSize = 20.sp)
-                            Column {
-                                Text(viewModel.getString("icecream_profit_title"), fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                Text("बिक्री व खरीद लागत के आधार पर शुद्ध मुनाफ़ा", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color(0xFF16A34A).copy(alpha = 0.15f)
-                        ) {
-                            Text(
-                                "${iceCreamProfit.marginPercent.toInt()}% Margin",
-                                color = Color(0xFF16A34A),
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 12.sp,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
-                    }
+                Button(
+                    onClick = onNavigateToMaalAavak,
+                    modifier = Modifier.weight(1.2f),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+                ) {
+                    Icon(Icons.Default.ReceiptLong, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Maal Aavak", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
 
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                FilledTonalButton(
+                    onClick = { showInsightsDialog = true },
+                    modifier = Modifier.weight(1.2f),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
+                ) {
+                    Text("🍨 Top Sellers", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
 
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Column {
-                            Text("कुल आइसक्रीम बिक्री:", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("₹${iceCreamProfit.totalSalesRevenue.toInt()}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        }
-                        Column {
-                            Text("खरीद लागत (Cost):", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("₹${iceCreamProfit.totalCostOfGoods.toInt()}", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("शुद्ध मुनाफ़ा (Profit):", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("+₹${iceCreamProfit.grossProfit.toInt()} 🟢", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF16A34A))
-                        }
-                    }
-
-                    // Prominent button to upload / inward stock bill!
-                    Button(
-                        onClick = { showInwardDialog = true },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                    ) {
-                        Icon(Icons.Default.PostAdd, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(viewModel.getString("inward_stock_btn"), fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    }
+                FilledTonalButton(
+                    onClick = { showWhatsAppOrderDialog = true },
+                    modifier = Modifier.weight(1.1f),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp)
+                ) {
+                    Text("📲 Order", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
 
-        if (boxTrackedSubCategories.isNotEmpty()) item {
+        // GODOWN BOX STATUS BANNER
+        item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
                 shape = RoundedCornerShape(18.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("📦 " + viewModel.getString("godown_box_status"), color = Color(0xFF94A3B8), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text("$totalBoxes Sealed Boxes", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Tap '-1 Open' when opening a box at counter.", color = Color(0xFFCBD5E1), fontSize = 12.sp)
-                }
-            }
-        }
-
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.weight(1f)) {
-                    items(filterOptions) { opt ->
-                        FilterChip(
-                            selected = selectedFilter == opt,
-                            onClick = { selectedFilter = opt },
-                            label = { Text(opt, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                        )
-                    }
-                }
-                if (boxTrackedSubCategories.isNotEmpty()) {
-                    Button(
-                        onClick = { showAddStockDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                    ) {
-                        Text(viewModel.getString("quick_new_stock"), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-
-        if (filtered.isEmpty()) {
-            item {
-                Text("No item-wise stock yet. Add stock by company and variety.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
-            }
-        } else {
-            items(filtered) { stock ->
-                val isAssignedVariety = stock.varietyName != "Opening stock (unassigned)"
-                val isLowStock = isAssignedVariety && stock.sealedBoxes <= stock.lowStockLimit
-                var limitText by remember(stock.categoryName, stock.companyName, stock.varietyName, stock.lowStockLimit) {
-                    mutableStateOf(stock.lowStockLimit.toString())
-                }
-                var boxesText by remember(stock.categoryName, stock.companyName, stock.varietyName, stock.sealedBoxes) {
-                    mutableStateOf(stock.sealedBoxes.toString())
-                }
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(14.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                "${stock.categoryName} • ${stock.companyName}",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                        Column {
+                            Text("📦 " + viewModel.getString("godown_box_status"), color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text("$totalBoxes Sealed Boxes", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
+                        }
+                        if (lowStockCount > 0) {
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFFDC2626).copy(alpha = 0.2f),
+                                modifier = Modifier.clickable { showWhatsAppOrderDialog = true }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text("⚠️ $lowStockCount Low Stock", color = Color(0xFFFCA5A5), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        "Tap '-1 Open' counter par box kholte waqt dabayein. Naya maal aane par Maal Aavak bill se boxes jodhein.",
+                        color = Color(0xFFCBD5E1),
+                        fontSize = 11.sp
+                    )
+                }
+            }
+        }
+
+        // SEARCH & FILTER BAR
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                AppTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = "Variety ya Company search karein...",
+                    leadingIcon = Icons.Default.Search,
+                    trailingIcon = if (searchQuery.isNotBlank()) {
+                        {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    } else null
+                )
+
+                if (boxTrackedCategories.size > 1) {
+                    val filterOptions = listOf("All") + boxTrackedCategories.map { it.name }
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(filterOptions) { opt ->
+                            FilterChip(
+                                selected = selectedCategoryFilter == opt,
+                                onClick = { selectedCategoryFilter = opt },
+                                label = { Text(opt, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
                             )
-                            Text(stock.varietyName, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                if (isLowStock) {
-                                    Icon(
-                                        Icons.Default.Warning,
-                                        contentDescription = null,
-                                        tint = if (stock.sealedBoxes == 0) Color(0xFFDC2626) else Color(0xFFB45309),
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
-                                Text(
-                                    "${stock.sealedBoxes} boxes available",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = when {
-                                        stock.sealedBoxes == 0 -> Color(0xFFDC2626)
-                                        isLowStock -> Color(0xFFB45309)
-                                        else -> MaterialTheme.colorScheme.primary
+                        }
+                    }
+                }
+            }
+        }
+
+        // COMPANY-WISE EXPANDABLE ACCORDIONS
+        if (companiesList.isEmpty()) {
+            item {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Abhi koi ice-cream company nahi hai.", fontSize = 13.sp, color = Color(0xFF64748B))
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = { showInwardDialog = true },
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("+ Pehla Maal Bill Darj Karein")
+                        }
+                    }
+                }
+            }
+        } else {
+            items(companiesList) { companyName ->
+                val companyStocks = varietyStocks.filter {
+                    it.companyName.equals(companyName, ignoreCase = true) &&
+                    (selectedCategoryFilter == "All" || it.categoryName.equals(selectedCategoryFilter, ignoreCase = true)) &&
+                    (searchQuery.isBlank() || it.varietyName.contains(searchQuery, ignoreCase = true) || it.companyName.contains(searchQuery, ignoreCase = true))
+                }
+                val totalCompanyBoxes = companyStocks.sumOf { it.sealedBoxes }
+                val companyLowCount = companyStocks.count { it.varietyName != UNASSIGNED_VARIETY && it.sealedBoxes <= it.lowStockLimit }
+                val isExpanded = effectiveExpanded.contains(companyName)
+                val defaultCategory = companyStocks.firstOrNull()?.categoryName
+                    ?: boxTrackedSubCategories.firstOrNull { it.name.equals(companyName, ignoreCase = true) }?.categoryName
+                    ?: boxTrackedCategories.firstOrNull()?.name
+                    ?: "Ice-cream"
+
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        // Company Header
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    expandedCompanies = if (isExpanded) {
+                                        expandedCompanies - companyName
+                                    } else {
+                                        expandedCompanies + companyName
                                     }
-                                )
-                            }
-                            if (isLowStock) {
-                                Text(
-                                    "${stock.varietyName}: only ${stock.sealedBoxes} box left (limit ${stock.lowStockLimit}).",
-                                    color = if (stock.sealedBoxes == 0) Color(0xFFDC2626) else Color(0xFFB45309),
-                                    fontSize = 11.sp,
-                                    fontWeight = if (stock.sealedBoxes == 0) FontWeight.Bold else FontWeight.Normal
-                                )
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                OutlinedTextField(
-                                    value = boxesText,
-                                    onValueChange = { value ->
-                                        if (value.isEmpty() || value.all(Char::isDigit)) boxesText = value
-                                    },
-                                    label = { Text("Qty") },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                OutlinedTextField(
-                                    value = limitText,
-                                    onValueChange = { value ->
-                                        if (value.isEmpty() || value.all(Char::isDigit)) limitText = value
-                                    },
-                                    label = { Text("Low limit") },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                            TextButton(
-                                onClick = {
-                                    viewModel.updateIceCreamVarietyStock(
-                                        stock,
-                                        sealedBoxes = boxesText.toIntOrNull() ?: stock.sealedBoxes,
-                                        lowStockLimit = limitText.toIntOrNull() ?: stock.lowStockLimit
+                                }
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("🏢", fontSize = 18.sp)
+                                Column {
+                                    Text(companyName, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        "${companyStocks.size} varieties",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                            ) { Text("Save") }
+                            }
+
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                if (companyLowCount > 0) {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = Color(0xFFFEE2E2)
+                                    ) {
+                                        Text(
+                                            "$companyLowCount Low",
+                                            color = Color(0xFFDC2626),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer
+                                ) {
+                                    Text(
+                                        "$totalCompanyBoxes Boxes",
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+
+                                Icon(
+                                    imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Button(
-                                onClick = {
-                                    viewModel.addIceCreamVarietyBoxes(
-                                        stock.categoryName,
-                                        stock.companyName,
-                                        stock.varietyName,
-                                        1
-                                    )
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        // Expanded View
+                        if (isExpanded) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFFF8FAFC))
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Text("+1", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                OutlinedButton(
+                                    onClick = { addVarietiesTarget = Pair(defaultCategory, companyName) },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("+ Varieties Jodo", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                if (companyStocks.size > 1) {
+                                    OutlinedButton(
+                                        onClick = { mergeTarget = Pair(defaultCategory, companyName) },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text("🔀 Merge", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
                             }
 
-                            Button(
-                                onClick = { viewModel.openIceCreamVarietyBox(stock) },
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                enabled = stock.sealedBoxes > 0
-                            ) {
-                                Text("Open", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
+                            if (companyStocks.isEmpty()) {
+                                Text(
+                                    "Is company mein abhi koi variety nahi hai. '+ Varieties Jodo' dabakar varieties jodiye.",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF64748B),
+                                    modifier = Modifier.padding(14.dp)
+                                )
+                            } else {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    companyStocks.forEach { stock ->
+                                        val isAssigned = stock.varietyName != UNASSIGNED_VARIETY
+                                        val isLow = isAssigned && stock.sealedBoxes <= stock.lowStockLimit
 
-                            WastageButton(viewModel = viewModel, stock = stock)
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (isLow) Color(0xFFFEF2F2) else Color(0xFFF8FAFC),
+                                            border = if (isLow) androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFECACA)) else null,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(stock.varietyName, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                        ) {
+                                                            if (stock.lastMrp > 0) {
+                                                                Text("MRP: ₹${stock.lastMrp.toInt()}", fontSize = 10.sp, color = Color(0xFF64748B))
+                                                            }
+                                                            if (stock.lastCostPrice > 0) {
+                                                                Text("Cost: ₹${stock.lastCostPrice.toInt()}", fontSize = 10.sp, color = Color(0xFF64748B))
+                                                            }
+                                                            Text("Alert Limit: ${stock.lowStockLimit}", fontSize = 10.sp, color = Color(0xFF64748B))
+                                                        }
+                                                    }
+
+                                                    Surface(
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        color = when {
+                                                            stock.sealedBoxes == 0 -> Color(0xFFDC2626)
+                                                            isLow -> Color(0xFFD97706)
+                                                            else -> Color(0xFF16A34A)
+                                                        }
+                                                    ) {
+                                                        Text(
+                                                            "${stock.sealedBoxes} Box",
+                                                            color = Color.White,
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                        )
+                                                    }
+                                                }
+
+                                                if (isLow) {
+                                                    Text(
+                                                        if (stock.sealedBoxes == 0) "⚠️ Stock khatam! 0 box bache hain."
+                                                        else "⚠️ Low stock! Sirf ${stock.sealedBoxes} box bache hain (limit: ${stock.lowStockLimit}).",
+                                                        color = if (stock.sealedBoxes == 0) Color(0xFFDC2626) else Color(0xFFB45309),
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.SemiBold
+                                                    )
+                                                }
+
+                                                // Action row: [-1 Open] [⚙️ Sudhaar] [Wastage] [🗑️]
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Button(
+                                                        onClick = {
+                                                            viewModel.openIceCreamVarietyBox(stock)
+                                                            Toast.makeText(context, "${stock.varietyName}: 1 Box counter par khola gaya", Toast.LENGTH_SHORT).show()
+                                                        },
+                                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                        enabled = stock.sealedBoxes > 0,
+                                                        modifier = Modifier.weight(1f)
+                                                    ) {
+                                                        Text("-1 Open", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                    }
+
+                                                    OutlinedButton(
+                                                        onClick = { stockForCorrection = stock },
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                        modifier = Modifier.weight(1.1f)
+                                                    ) {
+                                                        Text("⚙️ Sudhaar", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                    }
+
+                                                    WastageButton(viewModel = viewModel, stock = stock)
+
+                                                    IconButton(
+                                                        onClick = { stockForDelete = stock },
+                                                        modifier = Modifier.size(28.dp)
+                                                    ) {
+                                                        Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = Color(0xFF94A3B8), modifier = Modifier.size(16.dp))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -3056,68 +3407,676 @@ fun InventoryScreen(viewModel: ShopViewModel) {
         }
     }
 
-    if (showAddStockDialog && boxTrackedSubCategories.isNotEmpty()) {
-        val selectedCompany = selectedCompanyForStock ?: boxTrackedSubCategories.first().also {
-            selectedCompanyForStock = it
-        }
+    // DIALOGS
+    addVarietiesTarget?.let { (cat, comp) ->
+        AddVarietiesDialog(
+            companyName = comp,
+            categoryName = cat,
+            onDismiss = { addVarietiesTarget = null },
+            onAdd = { text, limit, cost, mrp ->
+                viewModel.addVarietiesBulk(
+                    categoryName = cat,
+                    companyName = comp,
+                    varietiesText = text,
+                    defaultLimit = limit,
+                    costPrice = cost,
+                    mrp = mrp
+                )
+                Toast.makeText(context, "Varieties jodi gayi!", Toast.LENGTH_SHORT).show()
+                addVarietiesTarget = null
+            }
+        )
+    }
 
-        AlertDialog(
-            onDismissRequest = { showAddStockDialog = false },
-            title = { Text("Add variety stock", fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Company", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(boxTrackedSubCategories) { company ->
-                            FilterChip(
-                                selected = selectedCompany.id == company.id,
-                                onClick = { selectedCompanyForStock = company },
-                                label = { Text(company.name, fontSize = 11.sp) }
-                            )
-                        }
+    mergeTarget?.let { (cat, comp) ->
+        val compVarieties = varietyStocks.filter { it.companyName.equals(comp, ignoreCase = true) }
+        MergeVarietiesDialog(
+            companyName = comp,
+            categoryName = cat,
+            varieties = compVarieties,
+            onDismiss = { mergeTarget = null },
+            onMerge = { src, tgt ->
+                viewModel.mergeVarieties(cat, comp, src, tgt) { err ->
+                    if (err == null) {
+                        Toast.makeText(context, "'$src' ko '$tgt' mein merge kar diya!", Toast.LENGTH_SHORT).show()
+                        mergeTarget = null
+                    } else {
+                        Toast.makeText(context, err, Toast.LENGTH_LONG).show()
                     }
-                    OutlinedTextField(
-                        value = stockVarietyName,
-                        onValueChange = { stockVarietyName = it },
-                        label = { Text("Item / variety") },
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = stockCountText,
-                        onValueChange = { stockCountText = it },
-                        label = { Text("Boxes") },
-                        singleLine = true
-                    )
                 }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    val count = stockCountText.toIntOrNull() ?: 0
-                    if (count > 0 && stockVarietyName.isNotBlank()) {
-                        viewModel.addIceCreamVarietyBoxes(
-                            selectedCompany.categoryName,
-                            selectedCompany.name,
-                            stockVarietyName,
-                            count
-                        )
-                        showAddStockDialog = false
-                        selectedCompanyForStock = null
-                        stockVarietyName = ""
-                        stockCountText = "1"
+            }
+        )
+    }
+
+    stockForCorrection?.let { stock ->
+        StockCorrectionDialog(
+            stock = stock,
+            onDismiss = { stockForCorrection = null },
+            onConfirm = { newBoxes, reason ->
+                viewModel.recordStockCorrection(stock, newBoxes, reason) { err ->
+                    if (err == null) {
+                        Toast.makeText(context, "Stock correction darj kiya gaya!", Toast.LENGTH_SHORT).show()
+                        stockForCorrection = null
+                    } else {
+                        Toast.makeText(context, err, Toast.LENGTH_LONG).show()
                     }
-                }) {
-                    Text("Add")
+                }
+            }
+        )
+    }
+
+    stockForDelete?.let { stock ->
+        AlertDialog(
+            onDismissRequest = { stockForDelete = null },
+            title = { Text("Variety Delete Karein?") },
+            text = { Text("Kya aap '${stock.varietyName}' (${stock.sealedBoxes} box) ko stock list se hatana chahte hain?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteVariety(stock) { err ->
+                            if (err == null) {
+                                Toast.makeText(context, "Variety hata di gayi", Toast.LENGTH_SHORT).show()
+                                stockForDelete = null
+                            } else {
+                                Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                ) {
+                    Text("Delete")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showAddStockDialog = false }) { Text("Cancel") }
+                TextButton(onClick = { stockForDelete = null }) { Text("Cancel") }
             }
         )
+    }
+
+    if (showInsightsDialog) {
+        IceCreamInsightsDialog(viewModel = viewModel, onDismiss = { showInsightsDialog = false })
+    }
+
+    if (showWhatsAppOrderDialog) {
+        WhatsAppOrderDialog(viewModel = viewModel, onDismiss = { showWhatsAppOrderDialog = false })
     }
 
     if (showInwardDialog) {
         InwardBillDialog(viewModel = viewModel, onDismiss = { showInwardDialog = false })
     }
+}
+
+// ==============================================================================
+// 4B. ADD VARIETIES DIALOG (BULK ADDITION)
+// ==============================================================================
+@Composable
+fun AddVarietiesDialog(
+    companyName: String,
+    categoryName: String,
+    onDismiss: () -> Unit,
+    onAdd: (varietiesText: String, defaultLimit: Int, defaultCost: Double, defaultMrp: Double) -> Unit
+) {
+    var varietiesText by remember { mutableStateOf("") }
+    var defaultLimitText by remember { mutableStateOf("2") }
+    var defaultCostText by remember { mutableStateOf("") }
+    var defaultMrpText by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text("+ Varieties Jodo", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("Company: $companyName", fontSize = 12.sp, color = Color(0xFF64748B))
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Varieties ke naam comma (,) ya nayi line se alag karke daalein:",
+                    fontSize = 11.sp,
+                    color = Color(0xFF64748B)
+                )
+                AppTextField(
+                    value = varietiesText,
+                    onValueChange = { varietiesText = it },
+                    placeholder = "e.g. Vanilla Cup 10, Choco Bar 20, Matka Kulfi",
+                    singleLine = false,
+                    modifier = Modifier.height(100.dp)
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AppTextField(
+                        value = defaultLimitText,
+                        onValueChange = { if (it.all(Char::isDigit)) defaultLimitText = it },
+                        label = "Low Alert Limit",
+                        keyboardType = KeyboardType.Number,
+                        modifier = Modifier.weight(1f)
+                    )
+                    AppTextField(
+                        value = defaultMrpText,
+                        onValueChange = { defaultMrpText = it },
+                        label = "MRP ₹ (Optional)",
+                        keyboardType = KeyboardType.Decimal,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val limit = defaultLimitText.toIntOrNull() ?: 2
+                    val cost = defaultCostText.toDoubleOrNull() ?: 0.0
+                    val mrp = defaultMrpText.toDoubleOrNull() ?: 0.0
+                    if (varietiesText.isNotBlank()) {
+                        onAdd(varietiesText, limit, cost, mrp)
+                    }
+                },
+                enabled = varietiesText.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Text("Varieties Save Karein")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+// ==============================================================================
+// 4C. MERGE VARIETIES DIALOG
+// ==============================================================================
+@Composable
+fun MergeVarietiesDialog(
+    companyName: String,
+    categoryName: String,
+    varieties: List<IceCreamVarietyStock>,
+    onDismiss: () -> Unit,
+    onMerge: (source: String, target: String) -> Unit
+) {
+    var sourceVariety by remember { mutableStateOf(varieties.firstOrNull()?.varietyName.orEmpty()) }
+    var targetVariety by remember { mutableStateOf(varieties.getOrNull(1)?.varietyName.orEmpty()) }
+    var sourceExpanded by remember { mutableStateOf(false) }
+    var targetExpanded by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text("🔀 Merge Duplicate Varieties", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("Company: $companyName", fontSize = 12.sp, color = Color(0xFF64748B))
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFFEF3C7),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        "Galat spelling ya duplicate variety ke saare boxes sahi variety mein jud jayenge, aur duplicate variety delete ho jayegi.",
+                        fontSize = 11.sp,
+                        color = Color(0xFF92400E),
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
+
+                // Source selector
+                Column {
+                    Text("1. Duplicate / Galat Variety Chunein (Isko hatana hai):", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { sourceExpanded = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(sourceVariety.ifBlank { "Select Duplicate" }, maxLines = 1)
+                        }
+                        DropdownMenu(
+                            expanded = sourceExpanded,
+                            onDismissRequest = { sourceExpanded = false }
+                        ) {
+                            varieties.forEach { v ->
+                                DropdownMenuItem(
+                                    text = { Text("${v.varietyName} (${v.sealedBoxes} box)") },
+                                    onClick = {
+                                        sourceVariety = v.varietyName
+                                        sourceExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Target selector
+                Column {
+                    Text("2. Sahi Master Variety Chunein (Isme jodna hai):", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { targetExpanded = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(targetVariety.ifBlank { "Select Target Master" }, maxLines = 1)
+                        }
+                        DropdownMenu(
+                            expanded = targetExpanded,
+                            onDismissRequest = { targetExpanded = false }
+                        ) {
+                            varieties.filter { it.varietyName != sourceVariety }.forEach { v ->
+                                DropdownMenuItem(
+                                    text = { Text("${v.varietyName} (${v.sealedBoxes} box)") },
+                                    onClick = {
+                                        targetVariety = v.varietyName
+                                        targetExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (sourceVariety.isNotBlank() && targetVariety.isNotBlank() && sourceVariety != targetVariety) {
+                        onMerge(sourceVariety, targetVariety)
+                    }
+                },
+                enabled = sourceVariety.isNotBlank() && targetVariety.isNotBlank() && sourceVariety != targetVariety,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+            ) {
+                Text("Merge Karein")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+// ==============================================================================
+// 4D. STOCK CORRECTION DIALOG (SUDAAR)
+// ==============================================================================
+@Composable
+fun StockCorrectionDialog(
+    stock: IceCreamVarietyStock,
+    onDismiss: () -> Unit,
+    onConfirm: (newBoxes: Int, reason: String) -> Unit
+) {
+    var newBoxesText by remember { mutableStateOf(stock.sealedBoxes.toString()) }
+    var reasonText by remember { mutableStateOf("") }
+    var limitText by remember { mutableStateOf(stock.lowStockLimit.toString()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text("⚙️ Stock Correction (सुधार)", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("${stock.companyName} • ${stock.varietyName}", fontSize = 12.sp, color = Color(0xFF64748B))
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFF1F5F9),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        "Current Stock: ${stock.sealedBoxes} Box. Box count sirf tab badalna chahiye jab godown mein ginti mein antar ho. Sudhaar ka record audit log mein darj hoga.",
+                        fontSize = 11.sp,
+                        color = Color(0xFF475569),
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
+
+                AppTextField(
+                    value = newBoxesText,
+                    onValueChange = { if (it.all(Char::isDigit)) newBoxesText = it },
+                    label = "Sahi Boxes Ki Sankhya (New Total)",
+                    keyboardType = KeyboardType.Number
+                )
+
+                AppTextField(
+                    value = limitText,
+                    onValueChange = { if (it.all(Char::isDigit)) limitText = it },
+                    label = "Low Stock Alert Limit",
+                    keyboardType = KeyboardType.Number
+                )
+
+                AppTextField(
+                    value = reasonText,
+                    onValueChange = { reasonText = it },
+                    label = "Sudhaar Ka Kaaran (Wajah likhna zaroori hai)*",
+                    placeholder = "e.g. Physical count antar, Kharab pighla, etc."
+                )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("Physical count antar", "Kharab/Pighla", "Pehle galat entry").forEach { r ->
+                        SuggestionChip(
+                            onClick = { reasonText = r },
+                            label = { Text(r, fontSize = 10.sp) }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val count = newBoxesText.toIntOrNull()
+                    if (count != null && reasonText.isNotBlank()) {
+                        onConfirm(count, reasonText.trim())
+                    }
+                },
+                enabled = newBoxesText.isNotBlank() && reasonText.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706))
+            ) {
+                Text("Correction Save Karein")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+// ==============================================================================
+// 4E. ICE-CREAM INSIGHTS & RANKING DIALOG
+// ==============================================================================
+@Composable
+fun IceCreamInsightsDialog(
+    viewModel: ShopViewModel,
+    onDismiss: () -> Unit
+) {
+    var selectedDays by remember { mutableStateOf(7) }
+    val (companyInsights, varietyInsights) = remember(selectedDays) {
+        viewModel.getIceCreamInsights(selectedDays)
+    }
+
+    val topSellers = varietyInsights.filter { it.totalConsumed > 0 }.take(10)
+    val deadStock = varietyInsights.filter { it.totalConsumed == 0 && it.currentBoxes > 0 }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("🍨", fontSize = 20.sp)
+                    Text("Top Sellers & Insights", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+                IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
+                    Icon(Icons.Default.Close, contentDescription = "Close")
+                }
+            }
+        },
+        text = {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 500.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // FILTER TABS: 7 Din / 30 Din / All Time
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(Pair(7, "7 Din"), Pair(30, "30 Din"), Pair(0, "All Time")).forEach { (days, label) ->
+                            FilterChip(
+                                selected = selectedDays == days,
+                                onClick = { selectedDays = days },
+                                label = { Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                            )
+                        }
+                    }
+                }
+
+                // 1. TOP SELLING VARIETIES LEADERBOARD
+                item {
+                    Text("🏆 Sabse Zyada Bikne Wali Varieties:", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+
+                if (topSellers.isEmpty()) {
+                    item {
+                        Text(
+                            "Is dauran koi variety bikri ya open hone ka record nahi hai.",
+                            fontSize = 11.sp,
+                            color = Color(0xFF64748B)
+                        )
+                    }
+                } else {
+                    items(topSellers) { item ->
+                        val rank = topSellers.indexOf(item) + 1
+                        val medal = when (rank) {
+                            1 -> "🥇"
+                            2 -> "🥈"
+                            3 -> "🥉"
+                            else -> "#$rank"
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFF8FAFC),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp).fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(medal, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    Column {
+                                        Text(item.varietyName, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            "${item.companyName} • ${item.currentBoxes} box bache hain",
+                                            fontSize = 10.sp,
+                                            color = Color(0xFF64748B)
+                                        )
+                                    }
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        "${item.totalConsumed} Open/Bika",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    item.estimatedDaysLeft?.let { days ->
+                                        Text(
+                                            "~$days din ka stock",
+                                            fontSize = 9.sp,
+                                            color = if (days <= 3) Color(0xFFDC2626) else Color(0xFF16A34A)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 2. COMPANY SHARE
+                if (companyInsights.isNotEmpty()) {
+                    item {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("📊 Company-wise Bikri Share:", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    items(companyInsights) { ci ->
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(ci.companyName, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                Text("${ci.totalConsumed} units (${ci.percentage.toInt()}%)", fontSize = 11.sp, color = Color(0xFF64748B))
+                            }
+                            val progressFraction = (ci.percentage / 100f).coerceIn(0f, 1f)
+                            LinearProgressIndicator(
+                                progress = { progressFraction },
+                                modifier = Modifier.fillMaxWidth().height(6.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                trackColor = Color(0xFFE2E8F0)
+                            )
+                        }
+                    }
+                }
+
+                // 3. DEAD STOCK / SLOW MOVING
+                if (deadStock.isNotEmpty()) {
+                    item {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text("⚠️ Jo Bik Hi Nahi Raha (Slow Moving):", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
+                    }
+                    items(deadStock) { ds ->
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFFEF3C7).copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(8.dp).fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(ds.varietyName, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text(ds.companyName, fontSize = 9.sp, color = Color(0xFF92400E))
+                                }
+                                Text("${ds.currentBoxes} box godown mein fansa hai", fontSize = 10.sp, color = Color(0xFF92400E), fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) { Text("Theek Hai") }
+        }
+    )
+}
+
+// ==============================================================================
+// 4F. WHATSAPP ORDER GENERATOR DIALOG
+// ==============================================================================
+@Composable
+fun WhatsAppOrderDialog(
+    viewModel: ShopViewModel,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val varietyStocks by viewModel.iceCreamVarietyStock.collectAsState()
+
+    val lowStockVarieties = remember(varietyStocks) {
+        varietyStocks.filter { it.varietyName != UNASSIGNED_VARIETY && it.sealedBoxes <= it.lowStockLimit }
+    }
+    val groupedByCompany = remember(lowStockVarieties) {
+        lowStockVarieties.groupBy { it.companyName }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("📋 Maal Mangwana Hai (Low Stock)", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
+                    Icon(Icons.Default.Close, contentDescription = "Close")
+                }
+            }
+        },
+        text = {
+            if (groupedByCompany.isEmpty()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("✅ Sabhi items ka stock theek hai!", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
+                    Text("Kisi bhi variety mein alert limit se kam stock nahi hai.", fontSize = 11.sp, color = Color(0xFF64748B))
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    item {
+                        Text(
+                            "Company ke hisaab se WhatsApp par 1-tap mein order bhejein:",
+                            fontSize = 11.sp,
+                            color = Color(0xFF64748B)
+                        )
+                    }
+                    groupedByCompany.forEach { (compName, itemsList) ->
+                        item(key = compName) {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(compName, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                        Text("${itemsList.size} items kam", fontSize = 10.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.Bold)
+                                    }
+
+                                    itemsList.forEach { stock ->
+                                        val suggestedOrder = maxOf(5, (stock.lowStockLimit * 2) - stock.sealedBoxes)
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("• ${stock.varietyName}", fontSize = 11.sp, color = Color(0xFF334155))
+                                            Text(
+                                                "${stock.sealedBoxes} bacha (Mangwayein: ${suggestedOrder} box)",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color(0xFF0369A1)
+                                            )
+                                        }
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            val orderPairs = itemsList.map {
+                                                val suggested = maxOf(5, (it.lowStockLimit * 2) - it.sealedBoxes)
+                                                Pair(it.varietyName, suggested)
+                                            }
+                                            val message = viewModel.generateWhatsAppOrderText(compName, orderPairs)
+                                            sendWhatsAppMessage(context, null, message)
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth(),
+                                        contentPadding = PaddingValues(vertical = 6.dp)
+                                    ) {
+                                        Text("📲 WhatsApp Order Bhejo ($compName)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Band Karein") }
+        }
+    )
 }
 
 // ==============================================================================
@@ -3405,6 +4364,8 @@ fun DayEndClosingView(viewModel: ShopViewModel, context: Context) {
     val udharCashRepay by viewModel.udharCashRepaymentTotal.collectAsState()
     val cashExpenses by viewModel.cashExpensesTotal.collectAsState()
     val expectedCash by viewModel.expectedCash.collectAsState()
+    val shopExpensesCash by viewModel.shopExpensesCashToday.collectAsState(initial = 0.0)
+    val supplierCashPaid by viewModel.supplierCashPaidToday.collectAsState(initial = 0.0)
 
     var actualCashText by remember { mutableStateOf("") }
     val actualCashVal = actualCashText.toDoubleOrNull() ?: expectedCash
@@ -3434,8 +4395,12 @@ fun DayEndClosingView(viewModel: ShopViewModel, context: Context) {
                         Text("+ ₹${udharCashRepay.toInt()}", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF16A34A))
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("• (-) Cash kharcha + supplier payment:", fontSize = 12.sp, color = Color(0xFFDC2626))
-                        Text("- ₹${cashExpenses.toInt()}", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFFDC2626))
+                        Text("• (-) Dukaan Cash Kharcha:", fontSize = 12.sp, color = Color(0xFFDC2626))
+                        Text("- ₹${shopExpensesCash.toInt()}", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFFDC2626))
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("• (-) Supplier ko Cash Diya:", fontSize = 12.sp, color = Color(0xFFDC2626))
+                        Text("- ₹${supplierCashPaid.toInt()}", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFFDC2626))
                     }
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
@@ -3455,12 +4420,11 @@ fun DayEndClosingView(viewModel: ShopViewModel, context: Context) {
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(viewModel.getString("actual_cash_input"), fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    OutlinedTextField(
+                    AppTextField(
                         value = actualCashText,
                         onValueChange = { actualCashText = it },
-                        label = { Text("Counted Cash in Till (₹)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                        label = "Counted Cash in Till (₹)",
+                        keyboardType = KeyboardType.Decimal
                     )
 
                     val diffColor = if (difference == 0.0) Color(0xFF16A34A) else if (difference < 0) Color(0xFFDC2626) else Color(0xFF0284C7)

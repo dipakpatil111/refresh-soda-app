@@ -292,6 +292,12 @@ interface ShopDao {
     """)
     suspend fun reconcileCompanyBoxes()
 
+    @Query("DELETE FROM ice_cream_variety_stock WHERE LOWER(categoryName) = LOWER(:categoryName) AND LOWER(companyName) = LOWER(:companyName) AND LOWER(varietyName) = LOWER(:varietyName)")
+    suspend fun deleteIceCreamVarietyStock(categoryName: String, companyName: String, varietyName: String)
+
+    @Query("UPDATE supplier_purchase_items SET varietyName = :targetVariety WHERE LOWER(varietyName) = LOWER(:sourceVariety)")
+    suspend fun updateVarietyInPurchaseItems(sourceVariety: String, targetVariety: String)
+
     @Query("DELETE FROM ice_cream_variety_stock WHERE LOWER(categoryName) = LOWER(:categoryName) AND LOWER(companyName) = LOWER(:companyName)")
     suspend fun deleteVarietyStockForCompany(categoryName: String, companyName: String)
 

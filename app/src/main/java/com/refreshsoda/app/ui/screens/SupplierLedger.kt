@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,7 +42,20 @@ private data class SupplierSummary(
     val billCount: Int
 )
 
-// ---------------- SUBVIEW 4: SUPPLIER LEDGER, BILLS, PAYMENTS, RETURNS ----------------
+// ---------------- STANDALONE MAAL AAVAK SCREEN ----------------
+@Composable
+fun MaalAavakScreen(viewModel: ShopViewModel) {
+    val context = LocalContext.current
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        SupplierPurchasesView(viewModel = viewModel, context = context)
+    }
+}
+
+// ---------------- SUBVIEW: SUPPLIER LEDGER, BILLS, PAYMENTS, RETURNS ----------------
 @Composable
 fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
     val isOwner by viewModel.isOwner.collectAsState()
@@ -64,6 +78,7 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
     val categories by viewModel.categories.collectAsState()
     val profile by viewModel.userProfile.collectAsState()
 
+    var showInwardDialog by remember { mutableStateOf(false) }
     var payFor by remember { mutableStateOf<SupplierPurchase?>(null) }
     var returnFor by remember { mutableStateOf<SupplierPurchase?>(null) }
     var editFor by remember { mutableStateOf<SupplierPurchase?>(null) }
@@ -96,6 +111,25 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        // TOP PRIMARY ACTION BUTTON: + Naya Maal Aavak (Bill Upload / Entry)
+        item {
+            Button(
+                onClick = { showInwardDialog = true },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF366A55))
+            ) {
+                Text(
+                    text = "📦 + Naya Maal Aavak (Bill Scan / Entry)",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            }
+        }
+
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF7F1D1D)),
@@ -415,6 +449,10 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
                 contactFor = null
             }
         )
+    }
+
+    if (showInwardDialog) {
+        InwardBillDialog(viewModel = viewModel, onDismiss = { showInwardDialog = false })
     }
 }
 

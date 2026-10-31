@@ -425,6 +425,14 @@ class ShopViewModel(
 
     // Cash Galla Closing Calculations
     // Cash kharcha + cash paid to suppliers (credit notes are not cash)
+    val shopExpensesCashToday = expenses.map { list ->
+        list.filter { it.paymentMode == "CASH" }.sumOf { it.amount }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
+    val supplierCashPaidToday = supplierPayments.map { list ->
+        list.filter { it.paymentMode == "CASH" }.sumOf { it.amount }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
     val cashExpensesTotal = combine(expenses, supplierPayments) { expenseList, paymentList ->
         expenseList.filter { it.paymentMode == "CASH" }.sumOf { it.amount } +
             paymentList.filter { it.paymentMode == "CASH" }.sumOf { it.amount }
@@ -1205,6 +1213,269 @@ class ShopViewModel(
                 )
             )
         }
+    }
+
+    fun addVarietiesBulk(
+        categoryName: String,
+        companyName: String,
+        varietiesText: String,
+        defaultLimit: Int = 2,
+        initialBoxes: Int = 0,
+        costPrice: Double = 0.0,
+        mrp: Double = 0.0
+    ) {
+        val names = varietiesText
+            .split(",", "\n", ";")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase(Locale.getDefault()) }
+
+        if (names.isEmpty()) return
+        viewModelScope.launch {
+            db.withTransaction {
+                val company = dao.getSubCategories(categoryName).firstOrNull {
+                    it.name.equals(companyName, ignoreCase = true)
+                } ?: SubCategory(categoryName = categoryName, name = companyName).also { dao.insertSubCategory(it) }
+
+                var addedCount = 0
+                names.forEach { name ->
+                    val existing = dao.getIceCreamVarietyStock(categoryName, company.name, name)
+                    if (existing == null) {
+                        dao.insertIceCreamVarietyStock(
+                            IceCreamVarietyStock(
+                                categoryName = categoryName,
+                                companyName = company.name,
+                                varietyName = name,
+                                sealedBoxes = initialBoxes.coerceAtLeast(0),
+                                lowStockLimit = defaultLimit.coerceAtLeast(0),
+                                lastCostPrice = costPrice,
+                                lastMrp = mrp
+                            )
+                        )
+                        addedCount++
+                    }
+                }
+                dao.reconcileCompanyBoxes()
+                dao.insertAuditLog(
+                    AuditLog(
+                        id = UUID.randomUUID().toString(),
+                        action = "VARIETIES_ADDED",
+                        details = "$companyName: Added $addedCount new varieties"
+                    )
+                )
+            }
+        }
+    }
+
+    fun mergeVarieties(
+        categoryName: String,
+        companyName: String,
+        sourceVariety: String,
+        targetVariety: String,
+        onComplete: (String?) -> Unit = {}
+    ) {
+        val source = sourceVariety.trim()
+        val target = targetVariety.trim()
+        if (source.isBlank() || target.isBlank()) {
+            onComplete("Dono varieties chuniye.")
+            return
+        }
+        if (source.equals(target, ignoreCase = true)) {
+            onComplete("Source aur target variety alag-alag honi chahiye.")
+            return
+        }
+        viewModelScope.launch {
+            try {
+                db.withTransaction {
+                    val srcStock = dao.getIceCreamVarietyStock(categoryName, companyName, source)
+                    val tgtStock = dao.getIceCreamVarietyStock(categoryName, companyName, target)
+                    if (srcStock == null) {
+                        onComplete("Source variety nahi mili.")
+                        return@withTransaction
+                    }
+                    val transferredBoxes = srcStock.sealedBoxes
+                    val updatedTgt = (tgtStock ?: IceCreamVarietyStock(
+                        categoryName = categoryName,
+                        companyName = companyName,
+                        varietyName = target,
+                        sealedBoxes = 0,
+                        lowStockLimit = srcStock.lowStockLimit
+                    )).let {
+                        it.copy(
+                            sealedBoxes = it.sealedBoxes + transferredBoxes,
+                            lastCostPrice = if (it.lastCostPrice > 0) it.lastCostPrice else srcStock.lastCostPrice,
+                            lastMrp = if (it.lastMrp > 0) it.lastMrp else srcStock.lastMrp
+                        )
+                    }
+                    dao.insertIceCreamVarietyStock(updatedTgt)
+                    dao.deleteIceCreamVarietyStock(categoryName, companyName, source)
+                    dao.updateVarietyInPurchaseItems(source, target)
+                    dao.reconcileCompanyBoxes()
+
+                    dao.insertAuditLog(
+                        AuditLog(
+                            id = UUID.randomUUID().toString(),
+                            action = "VARIETIES_MERGED",
+                            details = "$companyName: '$source' ko '$target' mein merge kiya ($transferredBoxes box shamil)."
+                        )
+                    )
+                }
+                onComplete(null)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onComplete(e.localizedMessage ?: "Merge nahi ho paya.")
+            }
+        }
+    }
+
+    fun recordStockCorrection(
+        stock: IceCreamVarietyStock,
+        newBoxes: Int,
+        reason: String,
+        onComplete: (String?) -> Unit = {}
+    ) {
+        val cleanReason = reason.trim()
+        if (cleanReason.isBlank()) {
+            onComplete("Sudhaar (Correction) ka kaaran likhna zaroori hai.")
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val oldBoxes = stock.sealedBoxes
+                val diff = newBoxes - oldBoxes
+                db.withTransaction {
+                    dao.insertIceCreamVarietyStock(stock.copy(sealedBoxes = newBoxes.coerceAtLeast(0)))
+                    dao.reconcileCompanyBoxes()
+                    dao.insertAuditLog(
+                        AuditLog(
+                            id = UUID.randomUUID().toString(),
+                            action = "STOCK_CORRECTION",
+                            details = "${stock.companyName} • ${stock.varietyName}: Stock badal kar $newBoxes box kiya (pehle $oldBoxes tha, antar: $diff). Wajah: $cleanReason"
+                        )
+                    )
+                }
+                onComplete(null)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onComplete(e.localizedMessage ?: "Correction save nahi ho paya.")
+            }
+        }
+    }
+
+    fun deleteVariety(stock: IceCreamVarietyStock, onComplete: (String?) -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                db.withTransaction {
+                    dao.deleteIceCreamVarietyStock(stock.categoryName, stock.companyName, stock.varietyName)
+                    dao.reconcileCompanyBoxes()
+                    dao.insertAuditLog(
+                        AuditLog(
+                            id = UUID.randomUUID().toString(),
+                            action = "VARIETY_DELETED",
+                            details = "Variety hatayi: ${stock.companyName} • ${stock.varietyName} (${stock.sealedBoxes} box)"
+                        )
+                    )
+                }
+                onComplete(null)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onComplete(e.localizedMessage ?: "Variety delete nahi ho payi.")
+            }
+        }
+    }
+
+    fun generateWhatsAppOrderText(companyName: String, items: List<Pair<String, Int>>): String {
+        val shop = userProfile.value.shopName.ifBlank { "Refresh Soda & Ice-cream" }
+        val phone = userProfile.value.phone
+        val address = userProfile.value.address
+        return buildString {
+            appendLine("🙏 *Order - $shop*")
+            appendLine("📅 तारीख: $todayDateString")
+            appendLine("🏢 Company: $companyName")
+            appendLine("━━━━━━━━━━━━━━━━━━━━")
+            appendLine("Kripya ye maal bhej dijiye:")
+            items.forEach { (name, qty) ->
+                appendLine("• $name: $qty Box")
+            }
+            appendLine("━━━━━━━━━━━━━━━━━━━━")
+            if (address.isNotBlank()) appendLine("📍 Pata: $address")
+            if (phone.isNotBlank()) appendLine("📞 Phone: $phone")
+            append("Dhanyavaad!")
+        }
+    }
+
+    fun getIceCreamInsights(daysLookback: Int): Pair<List<CompanyInsightsItem>, List<VarietyInsightsItem>> {
+        val now = System.currentTimeMillis()
+        val since = if (daysLookback > 0) now - (daysLookback.toLong() * 24L * 60L * 60L * 1000L) else 0L
+
+        val openLogs = auditLogs.value.filter {
+            it.action == "BOX_OPENED" && (since == 0L || it.timestamp >= since)
+        }
+        val consumedMap = mutableMapOf<String, Int>()
+        openLogs.forEach { log ->
+            val parts = log.details.removePrefix("-1 Box opened:").split("•")
+            if (parts.size >= 2) {
+                val company = parts[0].trim().lowercase(Locale.getDefault())
+                val variety = parts[1].trim().lowercase(Locale.getDefault())
+                val key = "$company|$variety"
+                consumedMap[key] = (consumedMap[key] ?: 0) + 1
+            }
+        }
+
+        val filteredSales = sales.value.filter { since == 0L || it.timestamp >= since }
+        filteredSales.forEach { sale ->
+            if (sale.itemsDetails.isNotBlank()) {
+                sale.itemsDetails.split(";").forEach { itemStr ->
+                    val seg = itemStr.split("|")
+                    if (seg.size >= 3) {
+                        val vName = seg[1].trim().lowercase(Locale.getDefault())
+                        val qty = seg[2].toIntOrNull() ?: 1
+                        val matchingStock = iceCreamVarietyStock.value.firstOrNull {
+                            it.varietyName.trim().lowercase(Locale.getDefault()) == vName
+                        }
+                        if (matchingStock != null) {
+                            val key = "${matchingStock.companyName.trim().lowercase(Locale.getDefault())}|$vName"
+                            consumedMap[key] = (consumedMap[key] ?: 0) + qty
+                        }
+                    }
+                }
+            }
+        }
+
+        val activeDays = if (daysLookback > 0) daysLookback else 30
+        val varietyItems = iceCreamVarietyStock.value
+            .filter { it.varietyName != "Opening stock (unassigned)" }
+            .map { stock ->
+                val key = "${stock.companyName.trim().lowercase(Locale.getDefault())}|${stock.varietyName.trim().lowercase(Locale.getDefault())}"
+                val consumed = consumedMap[key] ?: 0
+                val dailyRate = consumed.toDouble() / activeDays.toDouble()
+                val daysLeft = if (dailyRate > 0.0) (stock.sealedBoxes.toDouble() / dailyRate).toInt() else null
+                VarietyInsightsItem(
+                    categoryName = stock.categoryName,
+                    companyName = stock.companyName,
+                    varietyName = stock.varietyName,
+                    totalConsumed = consumed,
+                    currentBoxes = stock.sealedBoxes,
+                    lowStockLimit = stock.lowStockLimit,
+                    estimatedDaysLeft = daysLeft
+                )
+            }
+            .sortedByDescending { it.totalConsumed }
+
+        val companyMap = mutableMapOf<String, Int>()
+        varietyItems.forEach { item ->
+            companyMap[item.companyName] = (companyMap[item.companyName] ?: 0) + item.totalConsumed
+        }
+        val totalAll = companyMap.values.sum().coerceAtLeast(1)
+        val companyItems = companyMap.map { (comp, sum) ->
+            CompanyInsightsItem(
+                companyName = comp,
+                totalConsumed = sum,
+                percentage = (sum.toFloat() / totalAll.toFloat()) * 100f
+            )
+        }.sortedByDescending { it.totalConsumed }
+
+        return Pair(companyItems, varietyItems)
     }
 
     fun addBoxes(productId: String, productName: String, count: Int) {

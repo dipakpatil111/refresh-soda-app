@@ -83,6 +83,22 @@ data class DraftProductItem(
     val sealedBoxes: Int = 0
 )
 
+data class VarietyInsightsItem(
+    val categoryName: String,
+    val companyName: String,
+    val varietyName: String,
+    val totalConsumed: Int,
+    val currentBoxes: Int,
+    val lowStockLimit: Int,
+    val estimatedDaysLeft: Int?
+)
+
+data class CompanyInsightsItem(
+    val companyName: String,
+    val totalConsumed: Int,
+    val percentage: Float
+)
+
 data class InwardBillItemDraft(
     val name: String,
     val boxes: Int = 0,

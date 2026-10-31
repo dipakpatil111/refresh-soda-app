@@ -31,6 +31,7 @@ enum class Screen(val titleKey: String, val icon: ImageVector) {
     Dashboard("tab_dashboard", Icons.Default.Dashboard),
     POS("tab_pos", Icons.Default.PointOfSale),
     Inventory("tab_stock", Icons.Default.Inventory2),
+    MaalAavak("tab_maal_aavak", Icons.Default.LocalShipping),
     Khata("tab_khata", Icons.Default.MenuBook),
     Hisaab("tab_hisaab", Icons.Default.AccountBalanceWallet),
     Settings("tab_settings", Icons.Default.Settings)
@@ -157,6 +158,7 @@ class MainActivity : ComponentActivity() {
                                     Screen.Dashboard,
                                     Screen.POS,
                                     Screen.Inventory,
+                                    Screen.MaalAavak,
                                     Screen.Khata,
                                     Screen.Hisaab
                                 )
@@ -184,10 +186,15 @@ class MainActivity : ComponentActivity() {
                             when (currentScreen) {
                                 Screen.Dashboard -> DashboardScreen(
                                     viewModel = viewModel,
-                                    onNavigateToPOS = { currentScreen = Screen.POS }
+                                    onNavigateToPOS = { currentScreen = Screen.POS },
+                                    onNavigateToMaalAavak = { currentScreen = Screen.MaalAavak }
                                 )
                                 Screen.POS -> POSScreen(viewModel = viewModel)
-                                Screen.Inventory -> InventoryScreen(viewModel = viewModel)
+                                Screen.Inventory -> InventoryScreen(
+                                    viewModel = viewModel,
+                                    onNavigateToMaalAavak = { currentScreen = Screen.MaalAavak }
+                                )
+                                Screen.MaalAavak -> MaalAavakScreen(viewModel = viewModel)
                                 Screen.Khata -> KhataScreen(viewModel = viewModel)
                                 Screen.Hisaab -> HisaabScreen(
                                     viewModel = viewModel,

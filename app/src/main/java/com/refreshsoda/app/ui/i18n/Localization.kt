@@ -24,6 +24,11 @@ object AppStrings {
             AppLanguage.ENGLISH to "Box Stock",
             AppLanguage.MARATHI to "गोदाम साठा"
         ),
+        "tab_maal_aavak" to mapOf(
+            AppLanguage.HINDI to "माल आवक",
+            AppLanguage.ENGLISH to "Maal Aavak",
+            AppLanguage.MARATHI to "माल आवक"
+        ),
         "tab_khata" to mapOf(
             AppLanguage.HINDI to "उधार खाता",
             AppLanguage.ENGLISH to "Udhaar Khata",
