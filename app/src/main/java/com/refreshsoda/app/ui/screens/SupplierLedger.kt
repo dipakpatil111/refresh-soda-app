@@ -32,6 +32,7 @@ import com.refreshsoda.app.util.BillImages
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.refreshsoda.app.ui.theme.appColors
 
 private data class SupplierSummary(
     val key: String,
@@ -62,7 +63,7 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
     if (!isOwner) {
         Card(shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
             Text(
-                "Supplier ledger sirf owner dekh sakta hai.",
+                "Only the owner can view the supplier ledger.",
                 modifier = Modifier.padding(16.dp),
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -119,13 +120,13 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
                     .fillMaxWidth()
                     .height(50.dp),
                 shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF366A55))
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)
             ) {
                 Text(
-                    text = "📦 + Naya Maal Aavak (Bill Scan / Entry)",
+                    text = "📦 + New Inward Stock (Bill Scan / Entry)",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.onPrimary
                 )
             }
         }
@@ -137,11 +138,11 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
-                    Text("सप्लायर उधारी (Total Supplier Outstanding)", color = Color(0xFFFECDD3), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("Total Supplier Outstanding", color = Color(0xFFFECDD3), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("₹${totalDebt.toInt()} बाकी", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("₹${totalDebt.toInt()} due", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("सप्लायर को चुकाई जाने वाली बकाया रकम।", color = Color(0xFFFEE2E2), fontSize = 11.sp)
+                    Text("Amount still payable to suppliers.", color = MaterialTheme.appColors.dangerContainer, fontSize = 11.sp)
                 }
             }
         }
@@ -175,14 +176,14 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
                                 if (contact.isNotBlank()) Text(contact, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Text(
-                                if (summary.due > 0.5) "₹${summary.due.toInt()} baaki" else "Clear ✅",
+                                if (summary.due > 0.5) "₹${summary.due.toInt()} due" else "Clear ✅",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp,
-                                color = if (summary.due > 0.5) Color(0xFFDC2626) else Color(0xFF16A34A)
+                                color = if (summary.due > 0.5) MaterialTheme.appColors.danger else MaterialTheme.appColors.success
                             )
                         }
                         Text(
-                            "Kul kharid ₹${summary.totalPurchased.toInt()} • Diya ₹${summary.totalPaid.toInt()} • ${summary.billCount} bill",
+                            "Purchased ₹${summary.totalPurchased.toInt()} • Paid ₹${summary.totalPaid.toInt()} • ${summary.billCount} bills",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -190,7 +191,7 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
                             OutlinedButton(
                                 onClick = { supplierFilter = if (supplierFilter == summary.key) null else summary.key },
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
-                            ) { Text(if (supplierFilter == summary.key) "Sab bill" else "Bills dekho", fontSize = 10.sp) }
+                            ) { Text(if (supplierFilter == summary.key) "All bills" else "Bills dekho", fontSize = 10.sp) }
                             OutlinedButton(
                                 onClick = { contactFor = summary.name },
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
@@ -199,16 +200,16 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
                                 onClick = {
                                     val bills = purchases.filter { it.brand.trim().lowercase(Locale.getDefault()) == summary.key && it.balance() > 0.5 }
                                     val message = buildString {
-                                        appendLine("🙏 Namaste ${summary.name},")
-                                        appendLine("${profile.shopName.ifBlank { "Hamari dukaan" }} ki taraf se hisaab:")
-                                        appendLine("Kul kharid ₹${summary.totalPurchased.toInt()}, diya ₹${summary.totalPaid.toInt()}, baaki ₹${summary.due.toInt()}")
-                                        bills.forEach { appendLine("• Bill #${it.billNumber} (${it.billDate}): ₹${it.balance().toInt()} baaki") }
-                                        append("Kripya mila lein. Dhanyavaad!")
+                                        appendLine("🙏 Hello ${summary.name},")
+                                        appendLine("${profile.shopName.ifBlank { "Our shop" }} account statement:")
+                                        appendLine("Total purchased ₹${summary.totalPurchased.toInt()}, paid ₹${summary.totalPaid.toInt()}, due ₹${summary.due.toInt()}")
+                                        bills.forEach { appendLine("• Bill #${it.billNumber} (${it.billDate}): ₹${it.balance().toInt()} due") }
+                                        append("Please reconcile. Thank you!")
                                     }
                                     sendWhatsAppMessage(context, master?.phone, message)
                                 },
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
-                            ) { Text("WhatsApp hisaab", fontSize = 10.sp) }
+                            ) { Text("WhatsApp statement", fontSize = 10.sp) }
                         }
                     }
                 }
@@ -223,7 +224,7 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        "अभी तक कोई सप्लायर इनवॉइस नहीं जोड़ा गया है।\nगोदाम स्टॉक स्क्रीन में '+ नया माल (बिल अपलोड)' दबाकर सप्लायर का बिल जोड़ें।",
+                        "No supplier invoices added yet.\nTap '+ New Inward Stock' to add a supplier bill.",
                         modifier = Modifier.padding(16.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 12.sp
@@ -270,11 +271,11 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
                             }
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = if (isPaid) Color(0xFF16A34A).copy(alpha = 0.15f) else Color(0xFFDC2626).copy(alpha = 0.15f)
+                                color = if (isPaid) MaterialTheme.appColors.success.copy(alpha = 0.15f) else MaterialTheme.appColors.danger.copy(alpha = 0.15f)
                             ) {
                                 Text(
-                                    if (isPaid) "✅ Full Paid" else if (isUnpaid) "❌ Unpaid (Udhar)" else "⚠️ Partial",
-                                    color = if (isPaid) Color(0xFF16A34A) else Color(0xFFDC2626),
+                                    if (isPaid) "✅ Full Paid" else if (isUnpaid) "❌ Unpaid (Credit)" else "⚠️ Partial",
+                                    color = if (isPaid) MaterialTheme.appColors.success else MaterialTheme.appColors.danger,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
@@ -295,14 +296,14 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
 
                         Column {
                             Text(
-                                if (trackBoxes) "कुल बिल: ₹${purchase.totalAmount.toInt()} (${purchase.totalBoxes} Boxes)"
-                                else "कुल बिल: ₹${purchase.totalAmount.toInt()}",
+                                if (trackBoxes) "Bill total: ₹${purchase.totalAmount.toInt()} (${purchase.totalBoxes} Boxes)"
+                                else "Bill total: ₹${purchase.totalAmount.toInt()}",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
                             )
-                            Text("Diya: ₹${purchase.paidAmount.toInt()}", fontSize = 11.sp, color = Color(0xFF16A34A))
+                            Text("Paid: ₹${purchase.paidAmount.toInt()}", fontSize = 11.sp, color = MaterialTheme.appColors.success)
                             if (!isPaid) {
-                                Text("बकाया: ₹${balance.toInt()} बाकी", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
+                                Text("Due: ₹${balance.toInt()}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.appColors.danger)
                             }
                         }
 
@@ -310,10 +311,10 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
                             if (!isPaid) item {
                                 Button(
                                     onClick = { payFor = purchase },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.appColors.success, contentColor = MaterialTheme.appColors.onSuccess),
                                     shape = RoundedCornerShape(8.dp),
                                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                                ) { Text("Payment karein", fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                                ) { Text("Make payment", fontSize = 10.sp, fontWeight = FontWeight.Bold) }
                             }
                             item {
                                 OutlinedButton(onClick = { returnFor = purchase }, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)) {
@@ -338,7 +339,7 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
                             }
                             item {
                                 TextButton(onClick = { deleteFor = purchase }, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)) {
-                                    Text("Delete", fontSize = 10.sp, color = Color(0xFFDC2626))
+                                    Text("Delete", fontSize = 10.sp, color = MaterialTheme.appColors.danger)
                                 }
                             }
                         }
@@ -346,7 +347,7 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
                         if (expandedId == purchase.id) {
                             val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
                             if (history.isEmpty()) {
-                                Text("Is bill par abhi koi payment record nahi hai.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("No payments recorded on this bill yet.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             } else {
                                 history.forEach { payment ->
                                     Text(
@@ -371,7 +372,7 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
             onConfirm = { amount, mode, note ->
                 viewModel.addSupplierPayment(purchase, amount, mode, note) { error ->
                     if (error == null) {
-                        Toast.makeText(context, "Payment save ho gayi.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Payment saved.", Toast.LENGTH_SHORT).show()
                         payFor = null
                     } else {
                         Toast.makeText(context, error, Toast.LENGTH_LONG).show()
@@ -389,7 +390,7 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
             onConfirm = { variety, qty, credit, reason ->
                 viewModel.recordSupplierReturn(purchase, variety, qty, credit, reason) { error ->
                     if (error == null) {
-                        Toast.makeText(context, "Return save ho gaya, stock aur bill adjust ho gaye.", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "Return saved. Stock and bill have been adjusted.", Toast.LENGTH_LONG).show()
                         returnFor = null
                     } else {
                         Toast.makeText(context, error, Toast.LENGTH_LONG).show()
@@ -406,11 +407,11 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
     deleteFor?.let { purchase ->
         AlertDialog(
             onDismissRequest = { deleteFor = null },
-            title = { Text("Bill delete karein?") },
+            title = { Text("Delete bill?") },
             text = {
                 Text(
-                    "${purchase.brand} ka Bill #${purchase.billNumber} (₹${purchase.totalAmount.toInt()}) delete hoga. " +
-                        "Is bill ke boxes stock se wapas kam ho jayenge aur uski payments/returns bhi hat jayengi."
+                    "Bill #${purchase.billNumber} from ${purchase.brand} (₹${purchase.totalAmount.toInt()}) will be deleted. " +
+                        "Its boxes will be removed from stock again, and its payments and returns will be removed too."
                 )
             },
             confirmButton = {
@@ -418,14 +419,14 @@ fun SupplierPurchasesView(viewModel: ShopViewModel, context: Context) {
                     onClick = {
                         viewModel.deleteInwardPurchase(purchase) { error ->
                             if (error == null) {
-                                Toast.makeText(context, "Bill delete ho gaya, stock adjust ho gaya.", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Bill deleted and stock adjusted.", Toast.LENGTH_SHORT).show()
                             } else {
                                 Toast.makeText(context, error, Toast.LENGTH_LONG).show()
                             }
                         }
                         deleteFor = null
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.appColors.danger, contentColor = MaterialTheme.appColors.onDanger)
                 ) { Text("Delete") }
             },
             dismissButton = { TextButton(onClick = { deleteFor = null }) { Text("Cancel") } }
@@ -471,14 +472,14 @@ private fun SupplierPaymentDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("${purchase.brand} ko payment") },
+        title = { Text("Payment to ${purchase.brand}") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Bill #${purchase.billNumber} • baaki ₹${balance.toInt()}", fontSize = 12.sp)
+                Text("Bill #${purchase.billNumber} • due ₹${balance.toInt()}", fontSize = 12.sp)
                 OutlinedTextField(
                     value = amountText,
                     onValueChange = { amountText = it },
-                    label = { Text("Kitna diya? ₹") },
+                    label = { Text("Amount paid ₹") },
                     singleLine = true,
                     isError = amountText.isNotBlank() && !valid,
                     modifier = Modifier.fillMaxWidth()
@@ -492,7 +493,7 @@ private fun SupplierPaymentDialog(
                         )
                     }
                 }
-                Text("Cash payment dukaan ke galla se kam hoti hai (Day Closing mein dikhegi).", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Cash payments are deducted from the shop till (shown in Day Closing).", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedTextField(
                     value = note,
                     onValueChange = { note = it },
@@ -539,9 +540,9 @@ private fun SupplierReturnDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (billItems.isEmpty()) {
-                    Text("Is bill mein item nahi mile.", fontSize = 12.sp)
+                    Text("No items found on this bill.", fontSize = 12.sp)
                 } else {
-                    Text("Kaunsa item wapas kiya?", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("Which item was returned?", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(billItems) { item ->
                             FilterChip(
@@ -555,25 +556,25 @@ private fun SupplierReturnDialog(
                 OutlinedTextField(
                     value = qtyText,
                     onValueChange = { qtyText = it },
-                    label = { Text("Kitne box/qty") },
+                    label = { Text("Boxes / quantity") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = creditText,
                     onValueChange = { creditText = it },
-                    label = { Text("Supplier se credit ₹ (default ₹${defaultCredit.toInt()})") },
+                    label = { Text("Supplier credit ₹ (default ₹${defaultCredit.toInt()})") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = reason,
                     onValueChange = { reason = it },
-                    label = { Text("Wajah (melted / kharab / galat maal)") },
+                    label = { Text("Reason (melted / damaged / wrong item)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Text("Stock se box kam honge aur credit is bill ke baaki mein adjust hoga.", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Boxes will be removed from stock and the credit will be adjusted against this bill's balance.", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         confirmButton = {
@@ -630,7 +631,7 @@ fun BillPhotoDialog(path: String, onDismiss: () -> Unit) {
                         .heightIn(max = 480.dp)
                 )
             } else {
-                Text("Bill photo nahi khul payi (file shayad hat gayi hai).")
+                Text("Could not open the bill photo (the file may have been removed).")
             }
         }
     )

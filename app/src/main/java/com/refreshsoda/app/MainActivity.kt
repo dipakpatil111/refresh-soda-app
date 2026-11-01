@@ -234,14 +234,14 @@ class MainActivity : ComponentActivity() {
                     if (showExitDialog) {
                         AlertDialog(
                             onDismissRequest = { showExitDialog = false },
-                            title = { Text("दुकान ऐप बंद करें?", fontWeight = FontWeight.Bold) },
-                            text = { Text("क्या आप सचमुच ऐप से बाहर जाना चाहते हैं?") },
+                            title = { Text("Exit app?", fontWeight = FontWeight.Bold) },
+                            text = { Text("Do you really want to leave the app?") },
                             confirmButton = {
                                 Button(
                                     onClick = { finish() },
                                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                                 ) {
-                                    Text("हां, बंद करें (Exit)")
+                                    Text("Yes, exit")
                                 }
                             },
                             dismissButton = {

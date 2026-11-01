@@ -19,6 +19,7 @@ import com.refreshsoda.app.data.model.*
         SaleTransaction::class,
         CustomerKhata::class,
         KhataRepayment::class,
+        KhataCredit::class,
         Expense::class,
         DayClosing::class,
         PaytmSettlement::class,
@@ -32,7 +33,7 @@ import com.refreshsoda.app.data.model.*
         WastageRecord::class,
         Offer::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -227,6 +228,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `khata_credits` (`id` TEXT NOT NULL, `customerId` TEXT NOT NULL, `customerName` TEXT NOT NULL, `amount` REAL NOT NULL, `note` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+            }
+        }
+
         val MIGRATION_9_10 = object : Migration(9, 10) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `user_accounts` ADD COLUMN `shopId` TEXT NOT NULL DEFAULT ''")
@@ -284,7 +291,8 @@ abstract class AppDatabase : RoomDatabase() {
                     MIGRATION_6_7,
                     MIGRATION_7_8,
                     MIGRATION_8_9,
-                    MIGRATION_9_10
+                    MIGRATION_9_10,
+                    MIGRATION_10_11
                 )
                 .fallbackToDestructiveMigrationOnDowngrade()
                 .build()

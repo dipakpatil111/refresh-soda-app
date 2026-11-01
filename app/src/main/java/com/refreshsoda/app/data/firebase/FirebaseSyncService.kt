@@ -97,6 +97,7 @@ class FirebaseSyncService {
     suspend fun syncProduct(product: Product) = upsert("products", product.id, product.toMap())
     suspend fun syncKhata(khata: CustomerKhata) = upsert("khata", khata.id, khata.toMap())
     suspend fun syncRepayment(repayment: KhataRepayment) = upsert("khata_repayments", repayment.id, repayment.toMap())
+    suspend fun syncKhataCredit(credit: KhataCredit) = upsert("khata_credits", credit.id, credit.toMap())
     suspend fun syncExpense(expense: Expense) = upsert("expenses", expense.id, expense.toMap())
     suspend fun syncClosing(closing: DayClosing) = upsert("closings", closing.date, closing.toMap())
     suspend fun syncSettlement(settlement: PaytmSettlement) = upsert("settlements", settlement.date, settlement.toMap())
@@ -196,6 +197,7 @@ class FirebaseSyncService {
         rows(dao.snapshotSales(), { it.id }, { it.toMap() }, "sales")
         rows(dao.snapshotKhata(), { it.id }, { it.toMap() }, "khata")
         rows(dao.snapshotRepayments(), { it.id }, { it.toMap() }, "khata_repayments")
+        rows(dao.snapshotKhataCredits(), { it.id }, { it.toMap() }, "khata_credits")
         rows(dao.snapshotExpenses(), { it.id }, { it.toMap() }, "expenses")
         rows(dao.snapshotClosings(), { it.date }, { it.toMap() }, "closings")
         rows(dao.snapshotSettlements(), { it.date }, { it.toMap() }, "settlements")
@@ -251,6 +253,7 @@ class FirebaseSyncService {
         documents("sales").mapNotNull(::saleFromMap).forEach { dao.insertSale(it); restored++ }
         documents("khata").mapNotNull(::khataFromMap).forEach { dao.insertOrUpdateKhata(it); restored++ }
         documents("khata_repayments").mapNotNull(::repaymentFromMap).forEach { dao.insertRepayment(it); restored++ }
+        documents("khata_credits").mapNotNull(::khataCreditFromMap).also { dao.insertKhataCredits(it); restored += it.size }
         documents("expenses").mapNotNull(::expenseFromMap).forEach { dao.insertExpense(it); restored++ }
         documents("closings").mapNotNull(::closingFromMap).forEach { dao.insertOrUpdateClosing(it); restored++ }
         documents("settlements").mapNotNull(::settlementFromMap).forEach { dao.insertSettlementRestore(it); restored++ }

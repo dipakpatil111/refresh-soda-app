@@ -98,6 +98,23 @@ fun repaymentFromMap(m: Map<String, Any?>): KhataRepayment? {
     )
 }
 
+fun KhataCredit.toMap(): Map<String, Any?> = mapOf(
+    "id" to id, "customerId" to customerId, "customerName" to customerName, "amount" to amount,
+    "note" to note, "timestamp" to timestamp
+)
+
+fun khataCreditFromMap(m: Map<String, Any?>): KhataCredit? {
+    val id = m.strOrNull("id") ?: return null
+    return KhataCredit(
+        id = id,
+        customerId = m.str("customerId"),
+        customerName = m.str("customerName"),
+        amount = m.dbl("amount"),
+        note = m.str("note"),
+        timestamp = m.lng("timestamp")
+    )
+}
+
 fun Expense.toMap(): Map<String, Any?> = mapOf(
     "id" to id, "title" to title, "category" to category, "amount" to amount,
     "paymentMode" to paymentMode, "timestamp" to timestamp

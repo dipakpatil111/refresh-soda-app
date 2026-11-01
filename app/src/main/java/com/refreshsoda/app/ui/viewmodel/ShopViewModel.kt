@@ -138,7 +138,7 @@ class ShopViewModel(
     val todayDateString: String = dateFormat.format(Date())
 
     // Language State
-    private val _language = MutableStateFlow(AppLanguage.HINDI)
+    private val _language = MutableStateFlow(AppLanguage.ENGLISH)
     val language = _language.asStateFlow()
 
     fun setLanguage(lang: AppLanguage) {
@@ -200,6 +200,7 @@ class ShopViewModel(
     val sales = dao.getAllSales().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val khataList = dao.getAllKhata().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val repayments = dao.getAllRepayments().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val khataCredits = dao.getAllKhataCredits().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val expenses = dao.getAllExpenses().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val closings = dao.getAllClosings().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val settlements = dao.getAllSettlements().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -269,6 +270,18 @@ class ShopViewModel(
                 dao.reconcileCompanyBoxes()
                 // Also (re)writes the lookup fields that make indexed cloud login possible.
                 firebaseSync.syncUserToCloud(user)
+                // One-time full upload of data that already exists on this phone, so a later uninstall
+                // never loses it. Skipped when the local database is empty (it would wipe the cloud copy).
+                val backupFlag = "cloud_backup_done_${user.effectiveShopId}"
+                if (user.role != "STAFF" && !sessionPreferences.getBoolean(backupFlag, false)) {
+                    val hasLocalData = dao.snapshotSales().isNotEmpty() ||
+                        dao.snapshotProducts().isNotEmpty() ||
+                        dao.snapshotVarietyStock().isNotEmpty()
+                    if (hasLocalData) {
+                        firebaseSync.backupEverything(dao)
+                        sessionPreferences.edit().putBoolean(backupFlag, true).apply()
+                    }
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -1277,11 +1290,11 @@ class ShopViewModel(
         val source = sourceVariety.trim()
         val target = targetVariety.trim()
         if (source.isBlank() || target.isBlank()) {
-            onComplete("Dono varieties chuniye.")
+            onComplete("Please select both varieties.")
             return
         }
         if (source.equals(target, ignoreCase = true)) {
-            onComplete("Source aur target variety alag-alag honi chahiye.")
+            onComplete("Source and target variety must be different.")
             return
         }
         viewModelScope.launch {
@@ -1290,7 +1303,7 @@ class ShopViewModel(
                     val srcStock = dao.getIceCreamVarietyStock(categoryName, companyName, source)
                     val tgtStock = dao.getIceCreamVarietyStock(categoryName, companyName, target)
                     if (srcStock == null) {
-                        onComplete("Source variety nahi mili.")
+                        onComplete("Source variety not found.")
                         return@withTransaction
                     }
                     val transferredBoxes = srcStock.sealedBoxes
@@ -1316,14 +1329,14 @@ class ShopViewModel(
                         AuditLog(
                             id = UUID.randomUUID().toString(),
                             action = "VARIETIES_MERGED",
-                            details = "$companyName: '$source' ko '$target' mein merge kiya ($transferredBoxes box shamil)."
+                            details = "$companyName: merged '$source' into '$target' ($transferredBoxes boxes moved)."
                         )
                     )
                 }
                 onComplete(null)
             } catch (e: Exception) {
                 e.printStackTrace()
-                onComplete(e.localizedMessage ?: "Merge nahi ho paya.")
+                onComplete(e.localizedMessage ?: "Could not merge.")
             }
         }
     }
@@ -1336,7 +1349,7 @@ class ShopViewModel(
     ) {
         val cleanReason = reason.trim()
         if (cleanReason.isBlank()) {
-            onComplete("Sudhaar (Correction) ka kaaran likhna zaroori hai.")
+            onComplete("A reason for the correction is required.")
             return
         }
         viewModelScope.launch {
@@ -1350,14 +1363,14 @@ class ShopViewModel(
                         AuditLog(
                             id = UUID.randomUUID().toString(),
                             action = "STOCK_CORRECTION",
-                            details = "${stock.companyName} • ${stock.varietyName}: Stock badal kar $newBoxes box kiya (pehle $oldBoxes tha, antar: $diff). Wajah: $cleanReason"
+                            details = "${stock.companyName} • ${stock.varietyName}: Stock changed to $newBoxes boxes (was $oldBoxes, difference: $diff). Reason: $cleanReason"
                         )
                     )
                 }
                 onComplete(null)
             } catch (e: Exception) {
                 e.printStackTrace()
-                onComplete(e.localizedMessage ?: "Correction save nahi ho paya.")
+                onComplete(e.localizedMessage ?: "Could not save correction.")
             }
         }
     }
@@ -1379,7 +1392,7 @@ class ShopViewModel(
                 onComplete(null)
             } catch (e: Exception) {
                 e.printStackTrace()
-                onComplete(e.localizedMessage ?: "Variety delete nahi ho payi.")
+                onComplete(e.localizedMessage ?: "Could not delete variety.")
             }
         }
     }
@@ -1390,17 +1403,17 @@ class ShopViewModel(
         val address = userProfile.value.address
         return buildString {
             appendLine("🙏 *Order - $shop*")
-            appendLine("📅 तारीख: $todayDateString")
+            appendLine("📅 Date: $todayDateString")
             appendLine("🏢 Company: $companyName")
             appendLine("━━━━━━━━━━━━━━━━━━━━")
-            appendLine("Kripya ye maal bhej dijiye:")
+            appendLine("Please send the following items:")
             items.forEach { (name, qty) ->
                 appendLine("• $name: $qty Box")
             }
             appendLine("━━━━━━━━━━━━━━━━━━━━")
-            if (address.isNotBlank()) appendLine("📍 Pata: $address")
+            if (address.isNotBlank()) appendLine("📍 Address: $address")
             if (phone.isNotBlank()) appendLine("📞 Phone: $phone")
-            append("Dhanyavaad!")
+            append("Thank you!")
         }
     }
 
@@ -1497,17 +1510,59 @@ class ShopViewModel(
     }
 
     // ---------------- KHATA (UDHAAR) & REPAYMENTS ----------------
-    fun addNewCustomer(name: String, phone: String, limit: Double = 2000.0) {
+    /**
+     * Adds a customer once. [openingDue] (optional) is an amount the customer already owes; it is saved
+     * as a credit entry so it shows up in the customer's ledger.
+     */
+    fun addNewCustomer(
+        name: String,
+        phone: String,
+        limit: Double = 2000.0,
+        openingDue: Double = 0.0,
+        onResult: (Boolean, String?) -> Unit = { _, _ -> }
+    ) {
         viewModelScope.launch {
+            val cleanName = name.trim()
+            if (cleanName.isBlank()) {
+                onResult(false, "Customer name is required.")
+                return@launch
+            }
+            val exists = khataList.value.any { it.name.trim().equals(cleanName, ignoreCase = true) }
+            if (exists) {
+                onResult(false, "A customer named '$cleanName' already exists.")
+                return@launch
+            }
+            val due = openingDue.coerceAtLeast(0.0)
             val customer = CustomerKhata(
                 id = UUID.randomUUID().toString(),
-                name = name.trim(),
+                name = cleanName,
                 phone = phone.trim(),
-                outstandingDebt = 0.0,
+                outstandingDebt = due,
                 debtLimit = limit
             )
-            dao.insertOrUpdateKhata(customer)
+            val openingCredit = if (due > 0) {
+                KhataCredit(
+                    id = UUID.randomUUID().toString(),
+                    customerId = customer.id,
+                    customerName = cleanName,
+                    amount = due,
+                    note = "Opening balance"
+                )
+            } else null
+            db.withTransaction {
+                dao.insertOrUpdateKhata(customer)
+                openingCredit?.let { dao.insertKhataCredit(it) }
+            }
             firebaseSync.syncKhata(customer)
+            openingCredit?.let { firebaseSync.syncKhataCredit(it) }
+            dao.insertAuditLog(
+                AuditLog(
+                    id = UUID.randomUUID().toString(),
+                    action = "KHATA_CUSTOMER_ADDED",
+                    details = "Customer added: $cleanName" + if (due > 0) " (opening due ₹${due.toInt()})" else ""
+                )
+            )
+            onResult(true, null)
         }
     }
 
@@ -1518,17 +1573,53 @@ class ShopViewModel(
         }
     }
 
-    fun recordKhataRepayment(customerId: String, customerName: String, amount: Double, paymentMode: String = "CASH") {
+    /** Credit (udhaar) given to a customer outside of a POS sale. Increases the customer's due. */
+    fun recordKhataCredit(customerId: String, customerName: String, amount: Double, note: String = "") {
         viewModelScope.launch {
-            val repayment = KhataRepayment(
+            if (amount <= 0.0) return@launch
+            val credit = KhataCredit(
                 id = UUID.randomUUID().toString(),
                 customerId = customerId,
                 customerName = customerName,
                 amount = amount,
-                paymentMode = paymentMode
+                note = note.trim()
             )
             val updatedKhata = db.withTransaction {
-                dao.recordRepayment(customerId, amount)
+                dao.insertKhataCredit(credit)
+                dao.addDebtById(customerId, amount)
+                dao.getKhataById(customerId)
+            }
+            firebaseSync.syncKhataCredit(credit)
+            if (updatedKhata != null) firebaseSync.syncKhata(updatedKhata)
+            dao.insertAuditLog(
+                AuditLog(
+                    id = UUID.randomUUID().toString(),
+                    action = "KHATA_CREDIT",
+                    details = "Credit ₹${amount.toInt()} given to $customerName" + if (credit.note.isNotBlank()) " (${credit.note})" else ""
+                )
+            )
+        }
+    }
+
+    /**
+     * Payment received from a customer. [paymentMode] is "CASH" (goes into the till / Day Closing) or
+     * "UPI" (online, not part of the till cash). The amount is limited to what the customer owes.
+     */
+    fun recordKhataRepayment(customerId: String, customerName: String, amount: Double, paymentMode: String = "CASH") {
+        viewModelScope.launch {
+            val due = dao.getKhataById(customerId)?.outstandingDebt ?: 0.0
+            val applied = amount.coerceAtMost(due)
+            if (applied <= 0.0) return@launch
+            val mode = if (paymentMode == "UPI") "UPI" else "CASH"
+            val repayment = KhataRepayment(
+                id = UUID.randomUUID().toString(),
+                customerId = customerId,
+                customerName = customerName,
+                amount = applied,
+                paymentMode = mode
+            )
+            val updatedKhata = db.withTransaction {
+                dao.recordRepayment(customerId, applied)
                 dao.insertRepayment(repayment)
                 dao.getKhataById(customerId)
             }
@@ -1538,7 +1629,62 @@ class ShopViewModel(
                 AuditLog(
                     id = UUID.randomUUID().toString(),
                     action = "KHATA_REPAYMENT",
-                    details = "Received ₹${amount.toInt()} ($paymentMode) from $customerName"
+                    details = "Received ₹${applied.toInt()} ($mode) from $customerName"
+                )
+            )
+        }
+    }
+
+    /** Removes a wrongly entered manual credit and takes it back off the customer's due. */
+    fun deleteKhataCreditEntry(credit: KhataCredit) {
+        viewModelScope.launch {
+            val updatedKhata = db.withTransaction {
+                dao.deleteKhataCredit(credit.id)
+                dao.recordRepayment(credit.customerId, credit.amount)
+                dao.getKhataById(credit.customerId)
+            }
+            firebaseSync.delete("khata_credits", credit.id)
+            if (updatedKhata != null) firebaseSync.syncKhata(updatedKhata)
+            dao.insertAuditLog(
+                AuditLog(
+                    id = UUID.randomUUID().toString(),
+                    action = "KHATA_CREDIT_DELETED",
+                    details = "Credit entry ₹${credit.amount.toInt()} removed for ${credit.customerName}"
+                )
+            )
+        }
+    }
+
+    /** Removes a wrongly entered payment and adds the amount back to the customer's due. */
+    fun deleteKhataRepaymentEntry(repayment: KhataRepayment) {
+        viewModelScope.launch {
+            val updatedKhata = db.withTransaction {
+                dao.deleteRepaymentById(repayment.id)
+                dao.addDebtById(repayment.customerId, repayment.amount)
+                dao.getKhataById(repayment.customerId)
+            }
+            firebaseSync.delete("khata_repayments", repayment.id)
+            if (updatedKhata != null) firebaseSync.syncKhata(updatedKhata)
+            dao.insertAuditLog(
+                AuditLog(
+                    id = UUID.randomUUID().toString(),
+                    action = "KHATA_REPAYMENT_DELETED",
+                    details = "Payment ₹${repayment.amount.toInt()} (${repayment.paymentMode}) removed for ${repayment.customerName}"
+                )
+            )
+        }
+    }
+
+    /** Remove an item from the menu (asks for confirmation in the UI) and keeps an audit trail. */
+    fun deleteProductWithLog(product: Product) {
+        viewModelScope.launch {
+            dao.deleteProduct(product)
+            firebaseSync.delete("products", product.id)
+            dao.insertAuditLog(
+                AuditLog(
+                    id = UUID.randomUUID().toString(),
+                    action = "PRODUCT_DELETED",
+                    details = "Item deleted: ${product.name} (Category: ${product.category})"
                 )
             )
         }
@@ -1665,7 +1811,7 @@ class ShopViewModel(
         val catSummary = if (catMap.isNotEmpty()) {
             catMap.entries.joinToString("\n") { "• ${it.key}: ₹${it.value.toInt()}" }
         } else {
-            "• (कोई बिक्री नहीं)"
+            "• (No sales)"
         }
 
         val exp = cashExpensesTotal.value.toInt()
@@ -1681,34 +1827,34 @@ class ShopViewModel(
                 stock.sealedBoxes <= stock.lowStockLimit
         }
         val stockWarningText = if (lowStock.isNotEmpty()) {
-            "⚠️ *कम स्टॉक चेतावनी:*\n" + lowStock.joinToString("\n") {
+            "⚠️ *Low stock alert:*\n" + lowStock.joinToString("\n") {
                 "• ${it.companyName} ${it.varietyName}: only ${it.sealedBoxes} box left (limit ${it.lowStockLimit})."
             }
         } else {
-            "✅ *स्टॉक स्थिति:* सभी बॉक्स पर्याप्त हैं।"
+            "✅ *Stock status:* All boxes are sufficient."
         }
 
         return """
 🍧 *REFRESH SODA & ICE-CREAM* 🍧
-📅 *तारीख:* $todayDateString
+📅 *Date:* $todayDateString
 ━━━━━━━━━━━━━━━━━━━━
-💰 *आज का कुल धंधा:* ₹$total
+💰 *Today's Total Sales:* ₹$total
 $catSummary
 
-💳 *पेमेंट विभाजन:*
-• Cash बिक्री: ₹$cash
+💳 *Payment Split:*
+• Cash Sales: ₹$cash
 • Paytm / UPI: ₹$upi
-• आज का उधार: ₹$udhar
+• Credit Today: ₹$udhar
 
-💵 *गल्ला डे-एंड क्लोज़िंग:*
-• सुबह का कैश: ₹${_openingCash.value.toInt()}
-• (+) Cash बिक्री: ₹$cash
-• (+) उधार वसूली (Cash): ₹$rec
-• (-) गल्ले का खर्चा: ₹$exp
+💵 *Till Day-End Closing:*
+• Opening Cash: ₹${_openingCash.value.toInt()}
+• (+) Cash Sales: ₹$cash
+• (+) Credit Recovered (Cash): ₹$rec
+• (-) Till Expenses: ₹$exp
 ━━━━━━━━━━━━━━━━━━━━
-• सिस्टम हिसाब: ₹$expected
-• असली गल्ला: ₹$act
-• *फर्क:* ${if (diff == 0) "✅ बिल्कुल सही (₹0)" else if (diff < 0) "❌ ₹${-diff} Short" else "➕ ₹$diff Surplus"}
+• System Total: ₹$expected
+• Actual Cash: ₹$act
+• *Difference:* ${if (diff == 0) "✅ Exact match (₹0)" else if (diff < 0) "❌ ₹${-diff} Short" else "➕ ₹$diff Surplus"}
 
 $stockWarningText
 ━━━━━━━━━━━━━━━━━━━━
@@ -1788,6 +1934,18 @@ _Report generated by Refresh Soda App_
                 user
             }
             dao.updateLastLogin(activeUser.id, System.currentTimeMillis())
+            // Fresh install / new phone: this account was not on the device, so pull the shop's data
+            // back from the cloud BEFORE the session (and the cloud mirror) starts.
+            if (localUser == null) {
+                try {
+                    firebaseSync.shopId = activeUser.effectiveShopId
+                    firebaseSync.restoreAllFromCloud(dao)
+                    sessionPreferences.edit().putBoolean("cloud_backup_done_${activeUser.effectiveShopId}", true).apply()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    // Login still succeeds; the owner can retry from Settings > Restore Data.
+                }
+            }
             _currentUser.value = activeUser
             sessionPreferences.edit().putString(sessionUserIdKey, activeUser.id).apply()
             onUserSessionStarted(activeUser)
@@ -1824,7 +1982,7 @@ _Report generated by Refresh Soda App_
             // Staff accounts can only be created by a logged-in owner (from Settings), and they join that owner's shop.
             val actor = _currentUser.value
             if (role == "STAFF" && actor?.role != "OWNER") {
-                onResult(false, "Staff account sirf owner Settings se bana sakta hai.")
+                onResult(false, "Only the owner can create a staff account from Settings.")
                 return@launch
             }
             val newUser = UserAccount(

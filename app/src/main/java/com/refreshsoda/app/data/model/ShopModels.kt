@@ -167,6 +167,17 @@ data class KhataRepayment(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+/** A credit (udhaar) given to a customer outside of a POS sale: opening balance or manual entry. */
+@Entity(tableName = "khata_credits")
+data class KhataCredit(
+    @PrimaryKey val id: String,
+    val customerId: String,
+    val customerName: String,
+    val amount: Double,
+    val note: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 @Entity(tableName = "expenses")
 data class Expense(
     @PrimaryKey val id: String,

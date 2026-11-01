@@ -16,27 +16,27 @@ object AppStrings {
         ),
         "tab_pos" to mapOf(
             AppLanguage.HINDI to "बिक्री POS",
-            AppLanguage.ENGLISH to "POS Sale",
+            AppLanguage.ENGLISH to "Sales",
             AppLanguage.MARATHI to "विक्री POS"
         ),
         "tab_stock" to mapOf(
             AppLanguage.HINDI to "गोदाम स्टॉक",
-            AppLanguage.ENGLISH to "Box Stock",
+            AppLanguage.ENGLISH to "Stock",
             AppLanguage.MARATHI to "गोदाम साठा"
         ),
         "tab_maal_aavak" to mapOf(
             AppLanguage.HINDI to "माल आवक",
-            AppLanguage.ENGLISH to "Maal Aavak",
+            AppLanguage.ENGLISH to "Inward",
             AppLanguage.MARATHI to "माल आवक"
         ),
         "tab_khata" to mapOf(
             AppLanguage.HINDI to "उधार खाता",
-            AppLanguage.ENGLISH to "Udhaar Khata",
+            AppLanguage.ENGLISH to "Credit",
             AppLanguage.MARATHI to "उधारी खाते"
         ),
         "tab_hisaab" to mapOf(
             AppLanguage.HINDI to "हिसाब & खर्चे",
-            AppLanguage.ENGLISH to "Accounts & Expenses",
+            AppLanguage.ENGLISH to "Accounts",
             AppLanguage.MARATHI to "हिशोब आणि खर्च"
         ),
         "tab_settings" to mapOf(
@@ -93,7 +93,7 @@ object AppStrings {
         ),
         "udhar_khata" to mapOf(
             AppLanguage.HINDI to "उधार (खाता)",
-            AppLanguage.ENGLISH to "Credit (Udhaar)",
+            AppLanguage.ENGLISH to "Credit Sales",
             AppLanguage.MARATHI to "उधारी (खाते)"
         ),
         "quick_new_sale" to mapOf(
@@ -666,6 +666,6 @@ object AppStrings {
 
     fun get(key: String, language: AppLanguage): String {
         val entry = translations[key]
-        return entry?.get(language) ?: entry?.get(AppLanguage.HINDI) ?: key
+        return entry?.get(AppLanguage.ENGLISH) ?: key
     }
 }

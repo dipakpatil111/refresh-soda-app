@@ -109,14 +109,14 @@ fun ShopViewModel.saveInwardPurchase(request: InwardRequest, onComplete: (String
             val categoryName = request.category.trim()
             val brandName = request.brand.trim()
             if (categoryName.isBlank() || brandName.isBlank()) {
-                onComplete("Supplier aur category chuniye.")
+                onComplete("Select a supplier and a category.")
                 return@launch
             }
             val category = dao.getAllCategories().first().firstOrNull {
                 it.name.equals(categoryName, ignoreCase = true)
             }
             if (category == null) {
-                onComplete("Ye category ab maujood nahi hai.")
+                onComplete("This category no longer exists.")
                 return@launch
             }
             val trackBoxes = category.trackBoxes
@@ -126,13 +126,13 @@ fun ShopViewModel.saveInwardPurchase(request: InwardRequest, onComplete: (String
                         it.costPrice !in 0.01..100000.0 || it.sellingPrice !in 0.0..100000.0
                 }
             ) {
-                onComplete("Har item ka naam, quantity (1-$MAX_INWARD_QTY) aur cost bhariye.")
+                onComplete("Enter name, quantity (1-$MAX_INWARD_QTY) and cost for every item.")
                 return@launch
             }
             val linesTotal = if (items.isNotEmpty()) items.sumOf { it.lineAmount ?: it.lineTotal } else 0.0
             val total = request.printedTotal ?: linesTotal
             if (total <= 0.0) {
-                onComplete("Bill ka total zero nahi ho sakta.")
+                onComplete("The bill total cannot be zero.")
                 return@launch
             }
             val editingId = request.purchaseId
@@ -140,17 +140,17 @@ fun ShopViewModel.saveInwardPurchase(request: InwardRequest, onComplete: (String
             if (typedBillNumber.isNotBlank() &&
                 dao.countDuplicateBills(brandName, typedBillNumber, editingId ?: "") > 0
             ) {
-                onComplete("Is supplier ka bill number \"$typedBillNumber\" pehle se save hai.")
+                onComplete("Bill number \"$typedBillNumber\" is already saved for this supplier.")
                 return@launch
             }
             if (editingId == null && request.paidAmount !in 0.0..total) {
-                onComplete("Paid amount 0 se bill total ke beech hona chahiye.")
+                onComplete("Paid amount must be between 0 and the bill total.")
                 return@launch
             }
 
             val oldPurchase = editingId?.let { dao.getPurchaseById(it) }
             if (editingId != null && oldPurchase == null) {
-                onComplete("Ye bill ab maujood nahi hai.")
+                onComplete("This bill no longer exists.")
                 return@launch
             }
 
@@ -176,7 +176,7 @@ fun ShopViewModel.saveInwardPurchase(request: InwardRequest, onComplete: (String
                     brand = brandName,
                     amount = request.paidAmount,
                     paymentMode = request.paymentMode,
-                    note = "Bill ke saath"
+                    note = "With bill"
                 )
             } else {
                 null
@@ -287,7 +287,7 @@ fun ShopViewModel.saveInwardPurchase(request: InwardRequest, onComplete: (String
             updatedProducts.forEach { firebaseSync.syncProduct(it) }
         } catch (e: Exception) {
             e.printStackTrace()
-            onComplete(e.localizedMessage ?: "Bill save nahi ho paya.")
+            onComplete(e.localizedMessage ?: "Could not save bill.")
         }
     }
 }
@@ -324,7 +324,7 @@ fun ShopViewModel.deleteInwardPurchase(purchase: SupplierPurchase, onComplete: (
             firebaseSync.deletePurchaseCascade(purchase.id, itemIds, paymentIds, returnIds)
         } catch (e: Exception) {
             e.printStackTrace()
-            onComplete(e.localizedMessage ?: "Bill delete nahi ho paya.")
+            onComplete(e.localizedMessage ?: "Could not delete bill.")
         }
     }
 }
@@ -348,12 +348,12 @@ fun ShopViewModel.addSupplierPayment(
             db.withTransaction {
                 val current = dao.getPurchaseById(purchase.id)
                 if (current == null) {
-                    error = "Ye bill ab maujood nahi hai."
+                    error = "This bill no longer exists."
                     return@withTransaction
                 }
                 val balance = current.balance()
                 if (amount <= 0.0 || amount > balance + 0.5) {
-                    error = "Amount 0 se zyada aur baaki rakam (₹${balance.toInt()}) se kam hona chahiye."
+                    error = "Amount must be above 0 and not more than the balance due (₹${balance.toInt()})."
                     return@withTransaction
                 }
                 val applied = min(amount, balance)
@@ -382,7 +382,7 @@ fun ShopViewModel.addSupplierPayment(
             savedPurchase?.let { firebaseSync.syncPurchase(it) }
         } catch (e: Exception) {
             e.printStackTrace()
-            onComplete(e.localizedMessage ?: "Payment save nahi ho paya.")
+            onComplete(e.localizedMessage ?: "Could not save payment.")
         }
     }
 }
@@ -405,11 +405,11 @@ fun ShopViewModel.recordSupplierReturn(
             db.withTransaction {
                 val current = dao.getPurchaseById(purchase.id)
                 if (current == null) {
-                    error = "Ye bill ab maujood nahi hai."
+                    error = "This bill no longer exists."
                     return@withTransaction
                 }
                 if (quantity < 1 || creditAmount < 0.0 || varietyName.isBlank()) {
-                    error = "Variety, quantity (kam se kam 1) aur credit bhariye."
+                    error = "Enter variety, quantity (at least 1) and credit."
                     return@withTransaction
                 }
                 val category = dao.snapshotCategories().firstOrNull {
@@ -418,7 +418,7 @@ fun ShopViewModel.recordSupplierReturn(
                 if (category?.trackBoxes == true) {
                     val stock = dao.getIceCreamVarietyStock(current.category, current.brand, varietyName.trim())
                     if (stock == null || stock.sealedBoxes < quantity) {
-                        error = "Stock mein sirf ${stock?.sealedBoxes ?: 0} box hain, ${quantity} wapas nahi kar sakte."
+                        error = "Only ${stock?.sealedBoxes ?: 0} boxes are in stock, so ${quantity} cannot be returned."
                         return@withTransaction
                     }
                     dao.insertIceCreamVarietyStock(stock.copy(sealedBoxes = stock.sealedBoxes - quantity))
@@ -464,7 +464,7 @@ fun ShopViewModel.recordSupplierReturn(
             savedPurchase?.let { firebaseSync.syncPurchase(it) }
         } catch (e: Exception) {
             e.printStackTrace()
-            onComplete(e.localizedMessage ?: "Return save nahi ho paya.")
+            onComplete(e.localizedMessage ?: "Could not save return.")
         }
     }
 }
@@ -502,7 +502,7 @@ fun ShopViewModel.recordWastage(
             db.withTransaction {
                 val current = dao.getIceCreamVarietyStock(stock.categoryName, stock.companyName, stock.varietyName)
                 if (current == null || quantity < 1 || quantity > current.sealedBoxes) {
-                    error = "Quantity 1 se ${current?.sealedBoxes ?: 0} ke beech honi chahiye."
+                    error = "Quantity must be between 1 and ${current?.sealedBoxes ?: 0}."
                     return@withTransaction
                 }
                 dao.insertIceCreamVarietyStock(current.copy(sealedBoxes = current.sealedBoxes - quantity))
@@ -513,7 +513,7 @@ fun ShopViewModel.recordWastage(
                     varietyName = current.varietyName,
                     quantity = quantity,
                     estimatedCost = quantity * current.lastCostPrice,
-                    reason = reason.trim().ifBlank { "Melted / kharab" }
+                    reason = reason.trim().ifBlank { "Melted / damaged" }
                 )
                 dao.insertWastage(record)
                 dao.insertAuditLog(
@@ -529,7 +529,7 @@ fun ShopViewModel.recordWastage(
             saved?.let { firebaseSync.syncWastage(it) }
         } catch (e: Exception) {
             e.printStackTrace()
-            onComplete(e.localizedMessage ?: "Wastage save nahi ho paya.")
+            onComplete(e.localizedMessage ?: "Could not save wastage.")
         }
     }
 }

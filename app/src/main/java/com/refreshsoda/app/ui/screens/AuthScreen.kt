@@ -8,6 +8,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import com.refreshsoda.app.ui.theme.appColors
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,26 +60,6 @@ fun AuthScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(16.dp))
-
-            // Language Selector Chips at top
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                AppLanguage.values().forEach { lang ->
-                    FilterChip(
-                        selected = currentLang == lang,
-                        onClick = { viewModel.setLanguage(lang) },
-                        label = { Text(lang.displayName, fontWeight = FontWeight.Bold, fontSize = 12.sp) },
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                            selectedLabelColor = MaterialTheme.colorScheme.primary
-                        )
-                    )
-                }
-            }
 
             Spacer(modifier = Modifier.height(20.dp))
 
@@ -210,7 +191,7 @@ fun AuthScreen(
                                         modifier = Modifier.weight(1f),
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
                                         colors = ButtonDefaults.elevatedButtonColors(
-                                            containerColor = if (isOwner) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer
+                                            containerColor = if (isOwner) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.appColors.warningContainer
                                         )
                                     ) {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -325,7 +306,7 @@ fun AuthScreen(
                             )
                         }
                         Text(
-                            "Staff account owner login karke Settings se banta hai.",
+                            "A staff account can be created by the owner from Settings after logging in.",
                             fontSize = 10.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

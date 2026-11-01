@@ -56,13 +56,13 @@ class DailyShopWorker(context: Context, params: WorkerParameters) : CoroutineWor
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= 26) {
             manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "Dukaan alerts", NotificationManager.IMPORTANCE_DEFAULT)
+                NotificationChannel(CHANNEL_ID, "Shop alerts", NotificationManager.IMPORTANCE_DEFAULT)
             )
         }
         val lines = mutableListOf<String>()
-        if (lowStock > 0) lines.add("⚠️ $lowStock item ka stock kam hai" + (firstLow?.let { " ($it)" } ?: ""))
-        if (overdue > 0) lines.add("📒 $overdue customer ka udhaar due date se upar")
-        if (supplierBills > 0) lines.add("🏭 Supplier ka baaki ₹${supplierDue.toInt()} ($supplierBills bill)")
+        if (lowStock > 0) lines.add("⚠️ $lowStock items are low on stock" + (firstLow?.let { " ($it)" } ?: ""))
+        if (overdue > 0) lines.add("📒 $overdue customers have credit past the due date")
+        if (supplierBills > 0) lines.add("🏭 Supplier balance due ₹${supplierDue.toInt()} ($supplierBills bills)")
 
         val open = PendingIntent.getActivity(
             context, 0, Intent(context, MainActivity::class.java),
@@ -70,7 +70,7 @@ class DailyShopWorker(context: Context, params: WorkerParameters) : CoroutineWor
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("Aaj ke alerts")
+            .setContentTitle("Today's alerts")
             .setContentText(lines.first())
             .setStyle(NotificationCompat.BigTextStyle().bigText(lines.joinToString("\n")))
             .setContentIntent(open)

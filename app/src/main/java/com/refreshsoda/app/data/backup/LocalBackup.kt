@@ -44,14 +44,14 @@ object LocalBackup {
     fun importDatabase(context: Context, source: Uri): String? {
         val candidate = File(context.cacheDir, "restore_candidate.db")
         try {
-            val input = context.contentResolver.openInputStream(source) ?: return "File open nahi ho payi."
+            val input = context.contentResolver.openInputStream(source) ?: return "Could not open the file."
             input.use { stream -> candidate.outputStream().use { out -> stream.copyTo(out) } }
 
             val header = ByteArray(SQLITE_HEADER.length)
             val read = candidate.inputStream().use { it.read(header) }
             if (read < header.size || String(header, Charsets.US_ASCII) != SQLITE_HEADER) {
                 candidate.delete()
-                return "Ye valid backup file nahi hai."
+                return "This is not a valid backup file."
             }
 
             AppDatabase.closeInstance()
@@ -64,7 +64,7 @@ object LocalBackup {
             return null
         } catch (e: Exception) {
             e.printStackTrace()
-            return e.localizedMessage ?: "Restore fail ho gaya."
+            return e.localizedMessage ?: "Restore failed."
         }
     }
 

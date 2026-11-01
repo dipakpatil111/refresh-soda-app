@@ -30,6 +30,7 @@ import com.refreshsoda.app.ui.viewmodel.DayTrendStat
 import com.refreshsoda.app.ui.viewmodel.ShopViewModel
 import com.refreshsoda.app.ui.viewmodel.TopProductRank
 import java.util.Locale
+import com.refreshsoda.app.ui.theme.appColors
 
 @Composable
 fun AnalyticsScreen(viewModel: ShopViewModel) {
@@ -87,8 +88,8 @@ fun AnalyticsScreen(viewModel: ShopViewModel) {
                         amount = "₹${overallSummary.grossProfit.toInt()}",
                         subtitle = "${String.format(Locale.US, "%.1f", overallSummary.grossMarginPercent)}% Margin",
                         badgeText = "Gross Profit",
-                        badgeColor = Color(0xFFDCFCE7),
-                        badgeTextColor = Color(0xFF166534),
+                        badgeColor = MaterialTheme.appColors.successContainer,
+                        badgeTextColor = MaterialTheme.appColors.onSuccessContainer,
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -103,20 +104,20 @@ fun AnalyticsScreen(viewModel: ShopViewModel) {
                         amount = "₹${overallSummary.totalExpenses.toInt()}",
                         subtitle = "Shop & Material Cost",
                         badgeText = "Expenses",
-                        badgeColor = Color(0xFFFFE4E6),
-                        badgeTextColor = Color(0xFF9F1239),
+                        badgeColor = MaterialTheme.appColors.dangerContainer,
+                        badgeTextColor = MaterialTheme.appColors.onDangerContainer,
                         modifier = Modifier.weight(1f)
                     )
 
                     // Net Profit
                     val netProfit = overallSummary.netProfit
-                    val netColor = if (netProfit >= 0) Color(0xFF16A34A) else Color(0xFFDC2626)
+                    val netColor = if (netProfit >= 0) MaterialTheme.appColors.success else MaterialTheme.appColors.danger
                     KPICard(
                         title = viewModel.getString("net_profit"),
                         amount = "₹${netProfit.toInt()}",
                         subtitle = if (netProfit >= 0) "Net Gain" else "Loss",
                         badgeText = "Net Profit",
-                        badgeColor = if (netProfit >= 0) Color(0xFFDCFCE7) else Color(0xFFFEE2E2),
+                        badgeColor = if (netProfit >= 0) MaterialTheme.appColors.successContainer else MaterialTheme.appColors.dangerContainer,
                         badgeTextColor = netColor,
                         modifier = Modifier.weight(1f)
                     )
@@ -282,7 +283,7 @@ fun AnalyticsScreen(viewModel: ShopViewModel) {
                                 Text("Sales", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Box(modifier = Modifier.size(8.dp).background(Color(0xFF10B981), CircleShape))
+                                Box(modifier = Modifier.size(8.dp).background(MaterialTheme.appColors.success, CircleShape))
                                 Text("Profit", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
@@ -303,7 +304,7 @@ fun AnalyticsScreen(viewModel: ShopViewModel) {
         // CATEGORY PROFIT & MARGIN BREAKDOWN CARDS
         item {
             Text(
-                text = "मुनाफ़ा ब्रेकडाउन (Profit by Category)",
+                text = "Profit by Category",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground
@@ -363,7 +364,7 @@ fun AnalyticsScreen(viewModel: ShopViewModel) {
                         Icon(
                             imageVector = Icons.Default.EmojiEvents,
                             contentDescription = null,
-                            tint = Color(0xFFF59E0B),
+                            tint = MaterialTheme.appColors.warning,
                             modifier = Modifier.size(24.dp)
                         )
                     }
@@ -537,7 +538,7 @@ fun WeeklyTwinBarChart(
     }
 
     val primaryColor = MaterialTheme.colorScheme.primary
-    val profitColor = Color(0xFF10B981)
+    val profitColor = MaterialTheme.appColors.success
     val gridColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
     val textColor = MaterialTheme.colorScheme.onSurfaceVariant
 
@@ -635,13 +636,13 @@ fun CategoryProfitCard(stat: CategoryProfitStat) {
 
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFFDCFCE7)
+                    color = MaterialTheme.appColors.successContainer
                 ) {
                     Text(
                         text = "+₹${stat.grossProfit.toInt()} (${String.format(Locale.US, "%.0f", stat.marginPercent)}%)",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF166534),
+                        color = MaterialTheme.appColors.onSuccessContainer,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                     )
                 }
@@ -668,7 +669,7 @@ fun CategoryProfitCard(stat: CategoryProfitStat) {
                         "${String.format(Locale.US, "%.1f", stat.marginPercent)}%",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF16A34A)
+                        color = MaterialTheme.appColors.success
                     )
                 }
             }
@@ -682,7 +683,7 @@ fun CategoryProfitCard(stat: CategoryProfitStat) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(6.dp),
-                color = Color(0xFF10B981),
+                color = MaterialTheme.appColors.success,
                 trackColor = MaterialTheme.colorScheme.surfaceVariant
             )
         }
@@ -742,7 +743,7 @@ fun TopProductItemRow(product: TopProductRank) {
                     text = "Profit: +₹${product.profit.toInt()}",
                     fontSize = 10.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF16A34A)
+                    color = MaterialTheme.appColors.success
                 )
             }
         }

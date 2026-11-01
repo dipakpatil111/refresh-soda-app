@@ -40,6 +40,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import com.refreshsoda.app.ui.theme.appColors
 
 // ==============================================================================
 // DYNAMIC UPI QR (amount is already inside the QR)
@@ -62,26 +63,26 @@ fun UpiQrDialog(
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("₹${amount.toInt()} ka UPI QR", fontWeight = FontWeight.Bold) },
+        title = { Text("UPI QR for ₹${amount.toInt()}", fontWeight = FontWeight.Bold) },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 if (bitmap != null) {
                     Image(bitmap = bitmap.asImageBitmap(), contentDescription = "UPI QR", modifier = Modifier.size(260.dp))
                 } else {
-                    Text("QR nahi ban paya. UPI ID check karein.", color = MaterialTheme.colorScheme.error)
+                    Text("Could not generate QR. Please check the UPI ID.", color = MaterialTheme.colorScheme.error)
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("UPI ID: $upiId", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(
-                    "Customer apne UPI app se scan kare. Paisa aane ke baad niche wala button dabayein.",
+                    "Ask the customer to scan with their UPI app. Tap the button below once the payment arrives.",
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         },
         confirmButton = {
-            Button(onClick = onPaid, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))) {
-                Text("Payment mil gaya ✅")
+            Button(onClick = onPaid, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.appColors.info, contentColor = MaterialTheme.appColors.onInfo)) {
+                Text("Payment received ✅")
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
@@ -136,7 +137,7 @@ fun ManageOffersDialog(viewModel: ShopViewModel, onDismiss: () -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (offers.isEmpty()) {
-                    Text("Abhi koi offer nahi hai.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("No offers yet.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 offers.forEach { offer ->
                     Row(
@@ -154,17 +155,17 @@ fun ManageOffersDialog(viewModel: ShopViewModel, onDismiss: () -> Unit) {
                             )
                         }
                         Switch(checked = offer.active, onCheckedChange = { viewModel.saveOffer(offer.copy(active = it)) })
-                        TextButton(onClick = { viewModel.deleteOffer(offer) }) { Text("Delete", color = Color(0xFFDC2626), fontSize = 11.sp) }
+                        TextButton(onClick = { viewModel.deleteOffer(offer) }) { Text("Delete", color = MaterialTheme.appColors.danger, fontSize = 11.sp) }
                     }
                 }
                 HorizontalDivider()
-                Text("Naya offer", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Naam (jaise Diwali 10% off)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Text("New offer", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name (e.g. Diwali 10% off)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     FilterChip(selected = type == "PERCENT", onClick = { type = "PERCENT" }, label = { Text("% off", fontSize = 11.sp) })
                     FilterChip(selected = type == "FLAT", onClick = { type = "FLAT" }, label = { Text("₹ flat", fontSize = 11.sp) })
                 }
-                OutlinedTextField(value = valueText, onValueChange = { valueText = it }, label = { Text(if (type == "PERCENT") "Kitna %" else "Kitne ₹") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = valueText, onValueChange = { valueText = it }, label = { Text(if (type == "PERCENT") "Percent (%)" else "Amount (₹)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = minBillText, onValueChange = { minBillText = it }, label = { Text("Minimum bill ₹ (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 val value = valueText.toDoubleOrNull()
                 val valid = name.isNotBlank() && value != null && value > 0.0 && (type != "PERCENT" || value <= 100.0)
@@ -178,7 +179,7 @@ fun ManageOffersDialog(viewModel: ShopViewModel, onDismiss: () -> Unit) {
                         }
                     },
                     enabled = valid
-                ) { Text("Offer add karein") }
+                ) { Text("Add offer") }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } }
@@ -201,11 +202,11 @@ fun WastageDialog(viewModel: ShopViewModel, stock: IceCreamVarietyStock, onDismi
         title = { Text("Wastage – ${stock.varietyName}") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("${stock.companyName} • stock mein ${stock.sealedBoxes} box", fontSize = 12.sp)
+                Text("${stock.companyName} • ${stock.sealedBoxes} boxes in stock", fontSize = 12.sp)
                 OutlinedTextField(
                     value = qtyText,
                     onValueChange = { qtyText = it },
-                    label = { Text("Kitne box kharab/melt hue") },
+                    label = { Text("Boxes damaged / melted") },
                     singleLine = true,
                     isError = qtyText.isNotBlank() && !valid,
                     modifier = Modifier.fillMaxWidth()
@@ -213,18 +214,18 @@ fun WastageDialog(viewModel: ShopViewModel, stock: IceCreamVarietyStock, onDismi
                 OutlinedTextField(
                     value = reason,
                     onValueChange = { reason = it },
-                    label = { Text("Wajah (melted / expired / toota)") },
+                    label = { Text("Reason (melted / expired / broken)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 if (stock.lastCostPrice > 0.0) {
                     Text(
-                        "Nuksan ≈ ₹${(qty.coerceAtLeast(0) * stock.lastCostPrice).toInt()} (net profit mein ginta jayega)",
+                        "Loss ≈ ₹${(qty.coerceAtLeast(0) * stock.lastCostPrice).toInt()} (will be counted in net profit)",
                         fontSize = 11.sp,
-                        color = Color(0xFFDC2626)
+                        color = MaterialTheme.appColors.danger
                     )
                 } else {
-                    Text("Is variety ka cost bill se nahi mila, isliye nuksan ₹0 ginta jayega.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("No cost found for this variety from bills, so the loss will be counted as ₹0.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         },
@@ -233,7 +234,7 @@ fun WastageDialog(viewModel: ShopViewModel, stock: IceCreamVarietyStock, onDismi
                 onClick = {
                     viewModel.recordWastage(stock, qty, reason) { error ->
                         if (error == null) {
-                            Toast.makeText(context, "Wastage save ho gaya.", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Wastage saved.", Toast.LENGTH_SHORT).show()
                             onDismiss()
                         } else {
                             Toast.makeText(context, error, Toast.LENGTH_LONG).show()
@@ -241,7 +242,7 @@ fun WastageDialog(viewModel: ShopViewModel, stock: IceCreamVarietyStock, onDismi
                     }
                 },
                 enabled = valid,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.appColors.danger, contentColor = MaterialTheme.appColors.onDanger)
             ) { Text("Save wastage") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
@@ -254,12 +255,12 @@ fun WastageButton(viewModel: ShopViewModel, stock: IceCreamVarietyStock) {
     var show by remember { mutableStateOf(false) }
     Button(
         onClick = { show = true },
-        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFEE2E2)),
+        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.appColors.dangerContainer, contentColor = MaterialTheme.appColors.onDangerContainer),
         shape = RoundedCornerShape(8.dp),
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
         enabled = stock.sealedBoxes > 0 && stock.varietyName != UNASSIGNED_VARIETY
     ) {
-        Text("Wastage", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB91C1C))
+        Text("Wastage", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.appColors.danger)
     }
     if (show) WastageDialog(viewModel = viewModel, stock = stock, onDismiss = { show = false })
 }
@@ -284,35 +285,35 @@ fun AlertsCard(viewModel: ShopViewModel, includeLowStock: Boolean = true) {
     if (lowStock.isEmpty() && alerts.overdueKhata.isEmpty() && !showSupplier) return
 
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF3C7)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.appColors.warningContainer),
         shape = RoundedCornerShape(14.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("⚠️ Aaj ke alerts", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = Color(0xFF92400E))
+            Text("⚠️ Today's Alerts", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = MaterialTheme.appColors.onWarningContainer)
             lowStock.take(5).forEach { alert ->
-                val days = alert.daysLeft?.let { " • ~$it din ka stock" } ?: ""
+                val days = alert.daysLeft?.let { " • ~$it days of stock" } ?: ""
                 Text(
-                    "📦 ${alert.companyName} ${alert.varietyName}: ${alert.boxes} box bache$days → mangwayein",
+                    "📦 ${alert.companyName} ${alert.varietyName}: ${alert.boxes} boxes left$days → reorder",
                     fontSize = 12.sp,
-                    color = Color(0xFF78350F)
+                    color = MaterialTheme.appColors.onWarningContainer
                 )
             }
             if (lowStock.size > 5) {
-                Text("… aur ${lowStock.size - 5} item ka stock kam hai", fontSize = 11.sp, color = Color(0xFF78350F))
+                Text("… and ${lowStock.size - 5} more items are low on stock", fontSize = 11.sp, color = MaterialTheme.appColors.onWarningContainer)
             }
             alerts.overdueKhata.take(5).forEach { customer ->
                 Text(
-                    "📒 ${customer.name}: ₹${customer.outstandingDebt.toInt()} udhaar due date se upar",
+                    "📒 ${customer.name}: ₹${customer.outstandingDebt.toInt()} credit is past its due date",
                     fontSize = 12.sp,
-                    color = Color(0xFF78350F)
+                    color = MaterialTheme.appColors.onWarningContainer
                 )
             }
             if (showSupplier) {
                 Text(
-                    "🏭 Supplier ka baaki ₹${alerts.supplierDueTotal.toInt()} (${alerts.supplierDueBills} bill)",
+                    "🏭 Supplier balance due ₹${alerts.supplierDueTotal.toInt()} (${alerts.supplierDueBills} bills)",
                     fontSize = 12.sp,
-                    color = Color(0xFF78350F)
+                    color = MaterialTheme.appColors.onWarningContainer
                 )
             }
         }
@@ -343,7 +344,7 @@ fun OwnerToolsSection(viewModel: ShopViewModel) {
                 busy = false
                 Toast.makeText(
                     context,
-                    if (ok) "Backup file save ho gayi." else "Backup nahi ban paya.",
+                    if (ok) "Backup file saved." else "Could not create backup.",
                     Toast.LENGTH_LONG
                 ).show()
             }
@@ -380,7 +381,7 @@ fun OwnerToolsSection(viewModel: ShopViewModel) {
                 ) { Text("Backup restore", fontSize = 11.sp) }
             }
             Text(
-                "Roz subah automatic backup bhi bantaa hai (last 7 din, app ke backups folder mein).",
+                "An automatic backup is also created every morning (last 7 days, in the app's backups folder).",
                 fontSize = 10.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -396,12 +397,12 @@ fun OwnerToolsSection(viewModel: ShopViewModel) {
                     onClick = { exportCsv(context, viewModel, "purchases") },
                     modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
-                ) { Text("Maal aavak", fontSize = 11.sp) }
+                ) { Text("Inward stock", fontSize = 11.sp) }
                 OutlinedButton(
                     onClick = { exportCsv(context, viewModel, "khata") },
                     modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
-                ) { Text("Khata", fontSize = 11.sp) }
+                ) { Text("Credit ledger", fontSize = 11.sp) }
             }
 
             Text("Prices & offers", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -410,7 +411,7 @@ fun OwnerToolsSection(viewModel: ShopViewModel) {
                     onClick = { showBulkPrice = true },
                     modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
-                ) { Text("Sab prices badlo", fontSize = 11.sp) }
+                ) { Text("Update all prices", fontSize = 11.sp) }
                 OutlinedButton(
                     onClick = { showOffers = true },
                     modifier = Modifier.weight(1f),
@@ -429,13 +430,13 @@ fun OwnerToolsSection(viewModel: ShopViewModel) {
         val valid = percent != null && percent != 0.0 && percent >= -90.0 && percent <= 500.0
         AlertDialog(
             onDismissRequest = { showBulkPrice = false },
-            title = { Text("Sab prices ek saath badlo") },
+            title = { Text("Update all prices at once") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Kis category ke?", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("Which category?", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         item {
-                            FilterChip(selected = selectedCategory == null, onClick = { selectedCategory = null }, label = { Text("Sab", fontSize = 11.sp) })
+                            FilterChip(selected = selectedCategory == null, onClick = { selectedCategory = null }, label = { Text("All", fontSize = 11.sp) })
                         }
                         items(categories) { category ->
                             FilterChip(
@@ -448,11 +449,11 @@ fun OwnerToolsSection(viewModel: ShopViewModel) {
                     OutlinedTextField(
                         value = percentText,
                         onValueChange = { percentText = it },
-                        label = { Text("Kitna % (badhane ke liye 10, ghatane ke liye -10)") },
+                        label = { Text("Percent (10 to increase, -10 to decrease)") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Text("Naye prices nearest rupaye mein round honge.", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("New prices will be rounded to the nearest rupee.", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             },
             confirmButton = {
@@ -460,7 +461,7 @@ fun OwnerToolsSection(viewModel: ShopViewModel) {
                     onClick = {
                         if (percent != null) {
                             viewModel.bulkAdjustPrices(selectedCategory, percent) { count ->
-                                Toast.makeText(context, "$count items ka price badal gaya.", Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, "Updated the price of $count items.", Toast.LENGTH_LONG).show()
                             }
                             showBulkPrice = false
                         }
@@ -475,11 +476,11 @@ fun OwnerToolsSection(viewModel: ShopViewModel) {
     pendingRestore?.let { uri ->
         AlertDialog(
             onDismissRequest = { pendingRestore = null },
-            title = { Text("Backup restore karein?") },
+            title = { Text("Restore backup?") },
             text = {
                 Text(
-                    "Abhi ka saara data is backup file se REPLACE ho jayega aur app restart hogi. " +
-                        "Pehle 'Backup file' se abhi ka backup le lein."
+                    "All current data will be REPLACED by this backup file and the app will restart. " +
+                        "Create a backup of the current data first using 'Backup file'."
                 )
             },
             confirmButton = {
@@ -491,15 +492,15 @@ fun OwnerToolsSection(viewModel: ShopViewModel) {
                             val error = withContext(Dispatchers.IO) { LocalBackup.importDatabase(context, uri) }
                             busy = false
                             if (error == null) {
-                                Toast.makeText(context, "Restore ho gaya, app restart ho rahi hai...", Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, "Restore complete. The app is restarting...", Toast.LENGTH_LONG).show()
                                 LocalBackup.restartApp(context)
                             } else {
                                 Toast.makeText(context, error, Toast.LENGTH_LONG).show()
                             }
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
-                ) { Text("Haan, restore karo") }
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.appColors.danger, contentColor = MaterialTheme.appColors.onDanger)
+                ) { Text("Yes, restore") }
             },
             dismissButton = { TextButton(onClick = { pendingRestore = null }) { Text("Cancel") } }
         )
@@ -523,7 +524,7 @@ private fun exportCsv(context: Context, viewModel: ShopViewModel, kind: String) 
             )
             "purchases" -> LocalBackup.writeCsv(
                 context, "maal_aavak_$stamp.csv",
-                listOf("Bill date", "Supplier", "Category", "Bill no", "Total", "Paid", "Baaki", "Status", "Items"),
+                listOf("Bill date", "Supplier", "Category", "Bill no", "Total", "Paid", "Due", "Status", "Items"),
                 viewModel.supplierPurchases.value.map { p ->
                     listOf(
                         p.billDate, p.brand, p.category, p.billNumber, p.totalAmount.toString(), p.paidAmount.toString(),
@@ -542,10 +543,10 @@ private fun exportCsv(context: Context, viewModel: ShopViewModel, kind: String) 
                 }
             )
         }
-        ShareUtils.shareFile(context, file, "text/csv", "CSV share karein")
+        ShareUtils.shareFile(context, file, "text/csv", "Share CSV")
     } catch (e: Exception) {
         e.printStackTrace()
-        Toast.makeText(context, "Export nahi ho paya: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+        Toast.makeText(context, "Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
     }
 }
 
@@ -584,10 +585,10 @@ fun KhataDueDateRow(viewModel: ShopViewModel, customer: CustomerKhata) {
             contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
         ) {
             Text(
-                if (due != null) "📅 Due: ${format.format(Date(due))}" + if (overdue) " (nikal gayi)" else ""
-                else "📅 Due date set karein",
+                if (due != null) "📅 Due: ${format.format(Date(due))}" + if (overdue) " (overdue)" else ""
+                else "📅 Set due date",
                 fontSize = 11.sp,
-                color = if (overdue) Color(0xFFDC2626) else MaterialTheme.colorScheme.primary,
+                color = if (overdue) MaterialTheme.appColors.danger else MaterialTheme.colorScheme.primary,
                 fontWeight = if (overdue) FontWeight.Bold else FontWeight.Normal
             )
         }

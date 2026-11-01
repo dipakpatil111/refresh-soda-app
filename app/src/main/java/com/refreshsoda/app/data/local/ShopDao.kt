@@ -138,6 +138,28 @@ interface ShopDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRepayment(repayment: KhataRepayment)
 
+    // Manual credits (udhaar given outside POS)
+    @Query("SELECT * FROM khata_credits ORDER BY timestamp DESC")
+    fun getAllKhataCredits(): Flow<List<KhataCredit>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertKhataCredit(credit: KhataCredit)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertKhataCredits(credits: List<KhataCredit>)
+
+    @Query("DELETE FROM khata_credits WHERE id = :id")
+    suspend fun deleteKhataCredit(id: String)
+
+    @Query("DELETE FROM khata_repayments WHERE id = :id")
+    suspend fun deleteRepaymentById(id: String)
+
+    @Query("UPDATE customers_khata SET outstandingDebt = outstandingDebt + :amount WHERE id = :id")
+    suspend fun addDebtById(id: String, amount: Double)
+
+    @Query("SELECT * FROM khata_credits")
+    suspend fun snapshotKhataCredits(): List<KhataCredit>
+
     // Expenses
     @Query("SELECT * FROM expenses ORDER BY timestamp DESC")
     fun getAllExpenses(): Flow<List<Expense>>
