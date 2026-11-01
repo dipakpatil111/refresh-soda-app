@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.FilterChip
@@ -28,6 +29,7 @@ import androidx.compose.ui.unit.sp
 /**
  * Payment section for inward stock dialog.
  * Allows split payment: separate cash and online amounts.
+ * Uses existing AppTextField from ShopScreens.kt
  */
 @Composable
 fun PaymentSection(
@@ -107,7 +109,7 @@ fun PaymentSection(
             val remaining = (billTotal - totalPaid).coerceAtLeast(0.0)
 
             Surface(
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(10.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -151,7 +153,7 @@ fun PaymentSection(
             // Validation info
             if (totalPaid > billTotal + 0.5) {
                 Surface(
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.errorContainer,
                     modifier = Modifier.fillMaxWidth()
                 ) {
