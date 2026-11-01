@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.sp
 
 /**
  * Dialog to add or edit an ice-cream variety with name, cost price, and MRP.
+ * Uses existing AppTextField from ShopScreens.kt
  */
 @Composable
 fun VarietyEditorDialog(
