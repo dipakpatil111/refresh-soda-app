@@ -43,6 +43,89 @@ data class TopItemStats(
     val revenue: Double = 0.0
 )
 
+/** A custom date range picked on the Dashboard (both ends inclusive, in local time). */
+data class DateRangeFilter(val startMillis: Long, val endMillis: Long, val label: String)
+
+/** Business numbers for one period (today / this month / a picked date range). */
+data class PeriodSummary(
+    val totalSales: Double = 0.0,
+    val cashSales: Double = 0.0,
+    val upiSales: Double = 0.0,
+    val udharSales: Double = 0.0,
+    val expenses: Double = 0.0,
+    val billCount: Int = 0,
+    val categorySales: Map<String, Double> = emptyMap(),
+    val topItem: TopItemStats = TopItemStats(),
+    val topSoda: String = "—",
+    val topIceCream: String = "—"
+) {
+    val netProfit: Double get() = totalSales - expenses
+}
+
+fun buildPeriodSummary(
+    sales: List<SaleTransaction>,
+    expenses: List<Expense>,
+    categories: List<ProductCategory>,
+    start: Long,
+    end: Long
+): PeriodSummary {
+    val periodSales = sales.filter { it.timestamp in start..end }
+    val periodExpenses = expenses.filter { it.timestamp in start..end }
+
+    val categoryMap = mutableMapOf<String, Double>()
+    categories.forEach { categoryMap[it.name] = 0.0 }
+    val itemMap = mutableMapOf<String, Pair<Int, Double>>()
+    val sodaMap = mutableMapOf<String, Int>()
+    val iceMap = mutableMapOf<String, Int>()
+
+    periodSales.forEach { sale ->
+        if (sale.itemsDetails.isBlank()) return@forEach
+        sale.itemsDetails.split(";").forEach { itemStr ->
+            val parts = itemStr.split("|")
+            if (parts.size >= 4) {
+                val cat = parts[0]
+                val name = parts[1]
+                val qty = parts[2].toIntOrNull() ?: 1
+                val price = parts[3].toDoubleOrNull() ?: 0.0
+                categoryMap[cat] = (categoryMap[cat] ?: 0.0) + qty * price
+                val current = itemMap.getOrDefault(name, Pair(0, 0.0))
+                itemMap[name] = Pair(current.first + qty, current.second + qty * price)
+                val lowerCat = cat.trim().lowercase()
+                if (lowerCat.isIceCreamCategory()) {
+                    iceMap[name.trim()] = (iceMap[name.trim()] ?: 0) + qty
+                } else if (lowerCat.contains("soda", ignoreCase = true)) {
+                    sodaMap[name.trim()] = (sodaMap[name.trim()] ?: 0) + qty
+                }
+            }
+        }
+    }
+    val top = itemMap.maxByOrNull { it.value.first }
+    return PeriodSummary(
+        totalSales = periodSales.sumOf { it.totalAmount },
+        cashSales = periodSales.filter { it.paymentMode == "CASH" }.sumOf { it.totalAmount },
+        upiSales = periodSales.filter { it.paymentMode == "UPI" }.sumOf { it.totalAmount },
+        udharSales = periodSales.filter { it.paymentMode == "UDHAR" }.sumOf { it.totalAmount },
+        expenses = periodExpenses.sumOf { it.amount },
+        billCount = periodSales.size,
+        categorySales = categoryMap,
+        topItem = if (top != null) TopItemStats(top.key, top.value.first, top.value.second) else TopItemStats(),
+        topSoda = sodaMap.maxByOrNull { it.value }?.let { "${it.key} (${it.value} glass)" } ?: "—",
+        topIceCream = iceMap.maxByOrNull { it.value }?.let { "${it.key} (${it.value} pcs)" } ?: "—"
+    )
+}
+
+fun startOfDayMillis(millis: Long): Long = Calendar.getInstance().apply {
+    timeInMillis = millis
+    set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+}.timeInMillis
+
+fun endOfDayMillis(millis: Long): Long = startOfDayMillis(millis) + 24L * 60 * 60 * 1000 - 1
+
+fun startOfMonthMillis(millis: Long): Long = Calendar.getInstance().apply {
+    timeInMillis = startOfDayMillis(millis)
+    set(Calendar.DAY_OF_MONTH, 1)
+}.timeInMillis
+
 data class IceCreamProfitStats(
     val totalSalesRevenue: Double = 0.0,
     val totalCostOfGoods: Double = 0.0,
@@ -135,7 +218,7 @@ class ShopViewModel(
     private val sessionUserIdKey = "current_user_id"
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-    val todayDateString: String = dateFormat.format(Date())
+    val todayDateString: String get() = dateFormat.format(Date())
 
     // Language State
     private val _language = MutableStateFlow(AppLanguage.ENGLISH)
@@ -204,6 +287,18 @@ class ShopViewModel(
     val expenses = dao.getAllExpenses().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val closings = dao.getAllClosings().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val settlements = dao.getAllSettlements().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Start of the current day; re-checked every 30s so "today" rolls over at midnight without restarting the app.
+    private val todayStart: StateFlow<Long> = flow {
+        while (true) {
+            emit(startOfDayMillis(System.currentTimeMillis()))
+            delay(30_000L)
+        }
+    }.distinctUntilChanged().stateIn(viewModelScope, SharingStarted.Eagerly, startOfDayMillis(System.currentTimeMillis()))
+
+    private val salesToday = combine(sales, todayStart) { list, start -> list.filter { it.timestamp >= start } }
+    private val expensesToday = combine(expenses, todayStart) { list, start -> list.filter { it.timestamp >= start } }
+    private val repaymentsToday = combine(repayments, todayStart) { list, start -> list.filter { it.timestamp >= start } }
     val auditLogs = dao.getAllAuditLogs().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Multi-User Authentication Flows
@@ -230,6 +325,7 @@ class ShopViewModel(
     val suppliers = dao.getAllSuppliers().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val purchaseItems = dao.getAllPurchaseItems().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val supplierPayments = dao.getAllSupplierPayments().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    private val supplierPaymentsToday = combine(supplierPayments, todayStart) { list, start -> list.filter { it.timestamp >= start } }
     val supplierReturns = dao.getAllSupplierReturns().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val wastageRecords = dao.getAllWastage().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val offers = dao.getAllOffers().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -371,13 +467,13 @@ class ShopViewModel(
 
     // ---------------- DASHBOARD CALCULATIONS ----------------
     // Total Sales (Revenue from all modes)
-    val totalSalesAmount = sales.map { list -> list.sumOf { it.totalAmount } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
-    val cashSalesAmount = sales.map { list -> list.filter { it.paymentMode == "CASH" }.sumOf { it.totalAmount } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
-    val upiSalesAmount = sales.map { list -> list.filter { it.paymentMode == "UPI" }.sumOf { it.totalAmount } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
-    val udharSalesAmount = sales.map { list -> list.filter { it.paymentMode == "UDHAR" }.sumOf { it.totalAmount } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+    val totalSalesAmount = salesToday.map { list -> list.sumOf { it.totalAmount } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+    val cashSalesAmount = salesToday.map { list -> list.filter { it.paymentMode == "CASH" }.sumOf { it.totalAmount } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+    val upiSalesAmount = salesToday.map { list -> list.filter { it.paymentMode == "UPI" }.sumOf { it.totalAmount } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+    val udharSalesAmount = salesToday.map { list -> list.filter { it.paymentMode == "UDHAR" }.sumOf { it.totalAmount } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
     // Category-wise Sales Breakdown (Dynamically populated from user categories)
-    val categorySales = combine(sales, categories) { salesList, catList ->
+    val categorySales = combine(salesToday, categories) { salesList, catList ->
         val map = mutableMapOf<String, Double>()
         catList.forEach { cat -> map[cat.name] = 0.0 }
         salesList.forEach { sale ->
@@ -397,13 +493,30 @@ class ShopViewModel(
         map
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
-    val totalExpensesAmount = expenses.map { list -> list.sumOf { it.amount } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+    val totalExpensesAmount = expensesToday.map { list -> list.sumOf { it.amount } }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
     val todayNetProfit = combine(totalSalesAmount, totalExpensesAmount) { sales, exp ->
         sales - exp
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
-    val categoryExpenses = expenses.map { list ->
+    // ---------------- DASHBOARD PERIODS: TODAY / THIS MONTH / PICKED DATES ----------------
+    val todaySummary = combine(sales, expenses, categories, todayStart) { s, e, c, start ->
+        buildPeriodSummary(s, e, c, start, Long.MAX_VALUE)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PeriodSummary())
+
+    val monthSummary = combine(sales, expenses, categories, todayStart) { s, e, c, start ->
+        buildPeriodSummary(s, e, c, startOfMonthMillis(start), Long.MAX_VALUE)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), PeriodSummary())
+
+    private val _dashboardFilter = MutableStateFlow<DateRangeFilter?>(null)
+    val dashboardFilter: StateFlow<DateRangeFilter?> = _dashboardFilter.asStateFlow()
+    fun setDashboardFilter(filter: DateRangeFilter?) { _dashboardFilter.value = filter }
+
+    val filteredSummary: StateFlow<PeriodSummary?> = combine(sales, expenses, categories, _dashboardFilter) { s, e, c, f ->
+        f?.let { buildPeriodSummary(s, e, c, it.startMillis, it.endMillis) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val categoryExpenses = expensesToday.map { list ->
         val map = mutableMapOf<String, Double>()
         list.forEach { exp ->
             map[exp.category] = (map[exp.category] ?: 0.0) + exp.amount
@@ -412,7 +525,7 @@ class ShopViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     // Today's Top Selling Item overall
-    val topItem = sales.map { list ->
+    val topItem = salesToday.map { list ->
         val countMap = mutableMapOf<String, Pair<Int, Double>>()
         list.forEach { sale ->
             if (sale.itemsDetails.isNotBlank()) {
@@ -438,20 +551,20 @@ class ShopViewModel(
 
     // Cash Galla Closing Calculations
     // Cash kharcha + cash paid to suppliers (credit notes are not cash)
-    val shopExpensesCashToday = expenses.map { list ->
+    val shopExpensesCashToday = expensesToday.map { list ->
         list.filter { it.paymentMode == "CASH" }.sumOf { it.amount }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
-    val supplierCashPaidToday = supplierPayments.map { list ->
+    val supplierCashPaidToday = supplierPaymentsToday.map { list ->
         list.filter { it.paymentMode == "CASH" }.sumOf { it.amount }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
-    val cashExpensesTotal = combine(expenses, supplierPayments) { expenseList, paymentList ->
+    val cashExpensesTotal = combine(expensesToday, supplierPaymentsToday) { expenseList, paymentList ->
         expenseList.filter { it.paymentMode == "CASH" }.sumOf { it.amount } +
             paymentList.filter { it.paymentMode == "CASH" }.sumOf { it.amount }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
-    val udharCashRepaymentTotal = repayments.map { list ->
+    val udharCashRepaymentTotal = repaymentsToday.map { list ->
         list.filter { it.paymentMode == "CASH" }.sumOf { it.amount }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
@@ -461,7 +574,7 @@ class ShopViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
 
     // UPI Total Collection for Paytm Settlement (UPI Sales + UPI Udhar Repayments)
-    val totalUpiCollection = combine(upiSalesAmount, repayments) { upiSale, repayList ->
+    val totalUpiCollection = combine(upiSalesAmount, repaymentsToday) { upiSale, repayList ->
         val upiRepay = repayList.filter { it.paymentMode == "UPI" }.sumOf { it.amount }
         upiSale + upiRepay
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
@@ -511,7 +624,7 @@ class ShopViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), IceCreamProfitStats())
 
     // Daily Top Soda & Ice-cream Tracker
-    val topSodaAndIceCream = sales.map { list ->
+    val topSodaAndIceCream = salesToday.map { list ->
         val sodaMap = mutableMapOf<String, Int>()
         val iceMap = mutableMapOf<String, Int>()
         list.forEach { sale ->
@@ -1757,6 +1870,26 @@ class ShopViewModel(
             dao.insertOrUpdateSettlement(settlement)
             firebaseSync.syncSettlement(settlement)
         }
+    }
+
+    /** Marks one day's UPI collection as settled (or pending again). bankAmount = what Paytm actually credited. */
+    fun saveSettlementForDate(date: String, totalUpi: Double, bankAmount: Double, isSettled: Boolean) {
+        viewModelScope.launch {
+            val settlement = PaytmSettlement(
+                date = date,
+                totalUpiCollection = totalUpi,
+                chargeDeduction = (totalUpi - bankAmount).coerceAtLeast(0.0),
+                netBankAmount = bankAmount.coerceAtLeast(0.0),
+                isSettled = isSettled
+            )
+            dao.insertOrUpdateSettlement(settlement)
+            firebaseSync.syncSettlement(settlement)
+        }
+    }
+
+    /** Paytm usually credits several days in one transfer: mark all given days settled (no charge). */
+    fun settleDates(daysWithUpi: Map<String, Double>) {
+        daysWithUpi.forEach { (date, total) -> saveSettlementForDate(date, total, total, true) }
     }
 
     // ---------------- PRODUCT / MENU SETUP ----------------

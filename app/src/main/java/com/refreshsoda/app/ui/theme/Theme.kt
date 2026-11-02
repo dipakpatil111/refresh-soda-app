@@ -10,6 +10,8 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 
 enum class AppThemeMode(val displayName: String) {
     SYSTEM("System Default"),
@@ -159,7 +161,17 @@ fun RefreshSodaTheme(
         AppThemeMode.DARK -> true
     }
 
-    CompositionLocalProvider(LocalAppColors provides (if (isDark) DarkAppColors else LightAppColors)) {
+    // Phone ke system font size bada hone par text wrap na ho, isliye font scale ko 1.0 par cap kiya hai
+    val baseDensity = LocalDensity.current
+    val cappedDensity = Density(
+        density = baseDensity.density,
+        fontScale = baseDensity.fontScale.coerceAtMost(1.0f)
+    )
+
+    CompositionLocalProvider(
+        LocalDensity provides cappedDensity,
+        LocalAppColors provides (if (isDark) DarkAppColors else LightAppColors)
+    ) {
         MaterialTheme(
             colorScheme = if (isDark) DarkColorScheme else LightColorScheme,
             content = content

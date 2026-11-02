@@ -12,6 +12,9 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -622,7 +625,9 @@ fun SettingsScreen(viewModel: ShopViewModel) {
 fun DashboardScreen(
     viewModel: ShopViewModel,
     onNavigateToPOS: () -> Unit = {},
-    onNavigateToMaalAavak: () -> Unit = {}
+    onNavigateToMaalAavak: () -> Unit = {},
+    onNavigateToAnalytics: () -> Unit = {},
+    onNavigateToPurchaseReport: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val totalSales by viewModel.totalSalesAmount.collectAsState()
@@ -631,25 +636,25 @@ fun DashboardScreen(
     val udharSales by viewModel.udharSalesAmount.collectAsState()
     val totalExpenses by viewModel.totalExpensesAmount.collectAsState()
     val netProfit by viewModel.todayNetProfit.collectAsState()
-    val categorySalesMap by viewModel.categorySales.collectAsState()
-    val topItem by viewModel.topItem.collectAsState()
+    val dashboardFilter by viewModel.dashboardFilter.collectAsState()
+    val filteredSummary by viewModel.filteredSummary.collectAsState()
+    val todaySummary by viewModel.todaySummary.collectAsState()
+    // Category sales / top sellers follow the picked dates when a filter is on, otherwise today.
+    val activeSummary = filteredSummary ?: todaySummary
+    val categorySalesMap = activeSummary.categorySales
+    val topItem = activeSummary.topItem
     val categories by viewModel.categories.collectAsState()
     val subCategories by viewModel.subCategories.collectAsState()
     val varietyStocks by viewModel.iceCreamVarietyStock.collectAsState()
     val sales by viewModel.sales.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
-    val topSodaIce by viewModel.topSodaAndIceCream.collectAsState()
+    val topSodaIce = Pair(activeSummary.topSoda, activeSummary.topIceCream)
 
     var showInwardDialog by remember { mutableStateOf(false) }
     var selectedSaleForReceipt by remember { mutableStateOf<SaleTransaction?>(null) }
 
     val boxTrackedSubCategories = subCategories.filter { subCategory ->
         categories.any { it.trackBoxes && it.name.equals(subCategory.categoryName, ignoreCase = true) }
-    }
-    val lowStockItems = varietyStocks.filter { stock ->
-        stock.varietyName != "Opening stock (unassigned)" &&
-            categories.any { it.trackBoxes && it.name.equals(stock.categoryName, ignoreCase = true) } &&
-            stock.sealedBoxes <= stock.lowStockLimit
     }
     LazyColumn(
         modifier = Modifier
@@ -765,41 +770,51 @@ fun DashboardScreen(
             }
         }
 
-        // QUICK 1-TAP EXPENSES ROW
-        // LOW STOCK RED WARNING BADGE
-        item { AlertsCard(viewModel = viewModel, includeLowStock = false) }
-
-        if (lowStockItems.isNotEmpty()) {
+        // ANALYTICS + COMPANY PURCHASE REPORT (OWNER ONLY)
+        if (currentUser?.role != "STAFF") {
             item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.appColors.dangerContainer),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.appColors.danger, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(viewModel.getString("low_stock_warning"), color = MaterialTheme.appColors.danger, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        lowStockItems.take(6).forEach { prod ->
-                            Text(
-                                "• ${prod.companyName} ${prod.varietyName}: only ${prod.sealedBoxes} box left (limit ${prod.lowStockLimit}).",
-                                color = if (prod.sealedBoxes == 0) MaterialTheme.appColors.onDangerContainer else MaterialTheme.appColors.onWarningContainer,
-                                fontSize = 12.sp,
-                                fontWeight = if (prod.sealedBoxes == 0) FontWeight.Bold else FontWeight.Normal
-                            )
-                        }
+                    OutlinedButton(
+                        onClick = onNavigateToAnalytics,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Analytics, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Analytics", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    }
+                    OutlinedButton(
+                        onClick = onNavigateToPurchaseReport,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Company Report", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     }
                 }
             }
         }
 
+        // THIS MONTH'S BUSINESS
+        item { MonthSummaryCard(viewModel = viewModel, hideProfit = currentUser?.role == "STAFF") }
+
+        // DATE FILTER (Yesterday / Last 7 days / custom range)
+        item { DashboardDateFilter(viewModel = viewModel, hideProfit = currentUser?.role == "STAFF") }
+
+        item { AlertsCard(viewModel = viewModel, includeLowStock = false) }
+
         // CATEGORY-WISE SALES BREAKDOWN
         if (categorySalesMap.isNotEmpty()) {
             item {
-                Text(viewModel.getString("category_sales"), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text(
+                    if (dashboardFilter != null) "Category-wise Sales (${dashboardFilter?.label})" else viewModel.getString("category_sales"),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
             }
             item {
                 LazyRow(
@@ -826,7 +841,11 @@ fun DashboardScreen(
         // TODAY'S TOP ITEM CARD
         if (topItem.pieces > 0) {
             item {
-                Text(viewModel.getString("top_items"), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text(
+                    if (dashboardFilter != null) "Top Selling Items (${dashboardFilter?.label})" else viewModel.getString("top_items"),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
             }
             item {
                 Card(
@@ -857,7 +876,7 @@ fun DashboardScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("📊 Today's Top Sellers:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Text(if (dashboardFilter != null) "📊 Top Sellers (${dashboardFilter?.label}):" else "📊 Today's Top Sellers:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Surface(
                             shape = RoundedCornerShape(10.dp),
@@ -1087,6 +1106,7 @@ fun POSScreen(viewModel: ShopViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(12.dp)
     ) {
         // 5-SECOND SALE UNDO BANNER
@@ -1165,7 +1185,12 @@ fun POSScreen(viewModel: ShopViewModel) {
                 if (cart.isEmpty()) {
                     Text(viewModel.getString("cart_empty_hint"), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(
+                        modifier = Modifier
+                            .heightIn(max = 132.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
                         cart.forEachIndexed { index, item ->
                             Row(
                                 modifier = Modifier
@@ -1262,7 +1287,7 @@ fun POSScreen(viewModel: ShopViewModel) {
 
         // QUICK ADD-ONS
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1275,7 +1300,7 @@ fun POSScreen(viewModel: ShopViewModel) {
                             viewModel.addAddOn(cart.lastIndex, label.replace(Regex("[^a-zA-Z0-9]"), ""), cost)
                         }
                     },
-                    label = { Text(label, fontSize = 11.sp) }
+                    label = { Text(label, fontSize = 11.sp, maxLines = 1, softWrap = false) }
                 )
             }
         }
@@ -1429,7 +1454,7 @@ fun POSScreen(viewModel: ShopViewModel) {
                     (selectedCategoryName == "All" || category.name.equals(selectedCategoryName, ignoreCase = true))
             }
             val itemProducts = selectedItemProducts
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 companyCategories.forEach { category ->
                     val companies = subCategories.filter {
                         it.categoryName.equals(category.name, ignoreCase = true)
@@ -1503,7 +1528,7 @@ fun POSScreen(viewModel: ShopViewModel) {
                 if (itemProducts.isEmpty()) {
                     if (companyCategories.isEmpty()) {
                         Box(
-                            modifier = Modifier.fillMaxSize().padding(top = 40.dp),
+                            modifier = Modifier.fillMaxWidth().padding(top = 40.dp),
                             contentAlignment = Alignment.TopCenter
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1517,11 +1542,15 @@ fun POSScreen(viewModel: ShopViewModel) {
                         }
                     }
                 } else {
+                    val gridRows = (itemProducts.size + 2) / 3
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(3),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.weight(1f)
+                        userScrollEnabled = false,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height((gridRows * 98 + (gridRows - 1).coerceAtLeast(0) * 8 + 16).dp)
                     ) {
                         items(itemProducts) { product ->
                             Card(
@@ -2179,7 +2208,9 @@ fun InwardBillDialog(
     val context = LocalContext.current
     val categories by viewModel.categories.collectAsState()
     val subCategories by viewModel.subCategories.collectAsState()
-    val inwardCategories = categories
+    val inwardCategories = categories.filter { cat ->
+        cat.trackBoxes || (editPurchase != null && cat.name.equals(editPurchase.category, ignoreCase = true))
+    }
     val suppliers by viewModel.suppliers.collectAsState()
     val isOwner by viewModel.isOwner.collectAsState()
     val varietyStocks by viewModel.iceCreamVarietyStock.collectAsState()
@@ -2347,12 +2378,6 @@ fun InwardBillDialog(
                 // 2. ICE-CREAM CATEGORY SELECTOR
                 if (inwardCategories.size > 1) item {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            viewModel.getString("select_category_label"),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             LazyRow(
                                 modifier = Modifier.weight(1f),
@@ -2399,17 +2424,17 @@ fun InwardBillDialog(
                         FilterChip(
                             selected = paymentStatus == "PAID",
                             onClick = { paymentStatus = "PAID" },
-                            label = { Text(viewModel.getString("payment_status_paid"), fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                            label = { Text(viewModel.getString("payment_status_paid"), fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
                         )
                         FilterChip(
                             selected = paymentStatus == "UNPAID",
                             onClick = { paymentStatus = "UNPAID" },
-                            label = { Text(viewModel.getString("payment_status_unpaid"), fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                            label = { Text(viewModel.getString("payment_status_unpaid"), fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
                         )
                         FilterChip(
                             selected = paymentStatus == "PARTIAL",
                             onClick = { paymentStatus = "PARTIAL" },
-                            label = { Text("Partial", fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                            label = { Text("Partial", fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
                         )
                     }
                 }
@@ -2429,7 +2454,6 @@ fun InwardBillDialog(
                 if (editPurchase == null && paymentStatus != "UNPAID") {
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(viewModel.getString("payment_mode_label"), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 items(listOf("UPI", "CASH", "BANK")) { mode ->
                                     FilterChip(
@@ -2438,18 +2462,6 @@ fun InwardBillDialog(
                                         label = { Text(mode, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
                                     )
                                 }
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
-                            ) {
-                                Text(
-                                    "💡 Note: Only cash payments are deducted from today's till (Day Closing). UPI / bank payments are not.",
-                                    fontSize = 10.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(8.dp)
-                                )
                             }
                         }
                     }
@@ -2564,16 +2576,10 @@ fun InwardBillDialog(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        "📦 Add this bill's boxes to godown stock?",
+                                        "Add boxes to godown stock",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (updateStockBoxes) MaterialTheme.appColors.onSuccessContainer else MaterialTheme.appColors.onWarningContainer
-                                    )
-                                    Text(
-                                        if (updateStockBoxes) "Yes, the bill's boxes will be added to the company's godown stock."
-                                        else "No, it will only be recorded in the bill ledger. Stock will not increase.",
-                                        fontSize = 10.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                                 Switch(
@@ -2588,8 +2594,7 @@ fun InwardBillDialog(
                 // 7. EDITABLE ITEMS TABLE
                 item {
                     Text(
-                        if (trackBoxes) "📦 Invoice Items & Box Review (${draftItems.size} Items):"
-                        else "Invoice Items (${draftItems.size} Items):",
+                        "Items (${draftItems.size})",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -2644,15 +2649,13 @@ fun InwardBillDialog(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        Text("💡 Match:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.appColors.onInfoContainer)
-                                        Text("${bestMatch.first} (tap to select)", fontSize = 10.sp, color = MaterialTheme.appColors.info)
+                                        Text(bestMatch.first!!, fontSize = 10.sp, color = MaterialTheme.appColors.info, maxLines = 1)
                                     }
                                 }
                             }
 
                             if (trackBoxes && draft.name.isBlank() && companyVarieties.isNotEmpty()) {
                                 Column(modifier = Modifier.padding(top = 2.dp)) {
-                                    Text("Choose from existing varieties:", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         items(companyVarieties) { cv ->
                                             SuggestionChip(
@@ -4541,11 +4544,10 @@ fun HisaabScreen(
         viewModel.getString("daily_expenses"),
         viewModel.getString("paytm_settlement_title"),
         viewModel.getString("supplier_bills_title"),
-        "Category & Menu Setup",
-        "Analytics"
+        "Category & Menu Setup"
     )
     // Staff must not see supplier ledger or profit analytics.
-    val visibleTabs = subTabs.indices.filter { isOwner || (it != 3 && it != 5) }
+    val visibleTabs = subTabs.indices.filter { isOwner || (it != 3) }
 
     Column(
         modifier = Modifier
@@ -4570,7 +4572,6 @@ fun HisaabScreen(
             2 -> PaytmSettlementView(viewModel)
             3 -> if (isOwner) SupplierPurchasesView(viewModel, context)
             4 -> MenuAndCategoryManagementView(viewModel)
-            5 -> if (isOwner) AnalyticsScreen(viewModel)
         }
     }
 }
@@ -4865,64 +4866,6 @@ fun DailyExpensesView(viewModel: ShopViewModel) {
 }
 
 // ---------------- SUBVIEW 3: PAYTM MERCHANT SETTLEMENT ----------------
-@Composable
-fun PaytmSettlementView(viewModel: ShopViewModel) {
-    val upiTotal by viewModel.totalUpiCollection.collectAsState()
-    var chargeText by remember { mutableStateOf("0") }
-    var isSettled by remember { mutableStateOf(false) }
-
-    val charges = chargeText.toDoubleOrNull() ?: 0.0
-    val netExpected = (upiTotal - charges).coerceAtLeast(0.0)
-
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(18.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(viewModel.getString("paytm_settlement_title"), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Today's Total Online/UPI Collection:", fontSize = 13.sp)
-                        Text("₹${upiTotal.toInt()}", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = MaterialTheme.appColors.info)
-                    }
-
-                    OutlinedTextField(
-                        value = chargeText,
-                        onValueChange = { chargeText = it },
-                        label = { Text("Manual MDR / Charge Deductions (₹)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(viewModel.getString("net_bank_amount"), fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Text("₹${netExpected.toInt()}", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = MaterialTheme.appColors.success)
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = isSettled, onCheckedChange = { isSettled = it })
-                        Text(viewModel.getString("settled_in_bank"), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    }
-
-                    Button(
-                        onClick = { viewModel.savePaytmSettlement(charges, isSettled) },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.appColors.info, contentColor = MaterialTheme.appColors.onInfo),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Update Settlement")
-                    }
-                }
-            }
-        }
-    }
-}
-
 // ---------------- SUBVIEW 5: USER CATEGORY & MENU MANAGEMENT ----------------
 @Composable
 fun MenuAndCategoryManagementView(viewModel: ShopViewModel) {
