@@ -34,6 +34,11 @@ object AppStrings {
             AppLanguage.ENGLISH to "Credit",
             AppLanguage.MARATHI to "उधारी खाते"
         ),
+        "tab_expenses" to mapOf(
+            AppLanguage.HINDI to "खर्चे",
+            AppLanguage.ENGLISH to "Expenses",
+            AppLanguage.MARATHI to "खर्च"
+        ),
         "tab_hisaab" to mapOf(
             AppLanguage.HINDI to "हिसाब & खर्चे",
             AppLanguage.ENGLISH to "Accounts",

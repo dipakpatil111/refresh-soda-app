@@ -43,6 +43,19 @@ data class TopItemStats(
     val revenue: Double = 0.0
 )
 
+/** Starting point the owner entered for cash-in-shop and online money; everything after setAt is added/subtracted. */
+data class BalanceBase(val cash: Double = 0.0, val online: Double = 0.0, val setAt: Long = 0L)
+
+/** Live shop balances. hasBase=false until the owner enters starting amounts. */
+data class ShopBalance(
+    val hasBase: Boolean = false,
+    val cash: Double = 0.0,
+    val online: Double = 0.0,
+    val setAt: Long = 0L
+) {
+    val total: Double get() = cash + online
+}
+
 /** A custom date range picked on the Dashboard (both ends inclusive, in local time). */
 data class DateRangeFilter(val startMillis: Long, val endMillis: Long, val label: String)
 
@@ -567,6 +580,59 @@ class ShopViewModel(
     val udharCashRepaymentTotal = repaymentsToday.map { list ->
         list.filter { it.paymentMode == "CASH" }.sumOf { it.amount }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
+    // ---------------- SHOP BALANCE: CASH IN SHOP + ONLINE MONEY ----------------
+    private val balancePrefs: SharedPreferences =
+        context.applicationContext.getSharedPreferences("shop_balances", Context.MODE_PRIVATE)
+
+    private val _balanceBase = MutableStateFlow(
+        BalanceBase(
+            cash = balancePrefs.getString("cash", null)?.toDoubleOrNull() ?: 0.0,
+            online = balancePrefs.getString("online", null)?.toDoubleOrNull() ?: 0.0,
+            setAt = balancePrefs.getLong("setAt", 0L)
+        )
+    )
+
+    /**
+     * Cash in shop  = entered cash   + cash sales + cash udhar recovery − cash expenses − cash supplier payments
+     * Online money  = entered online + UPI sales  + UPI udhar recovery  − online expenses − UPI/bank supplier payments
+     * Only entries made after the moment the balance was entered are counted.
+     */
+    val shopBalance: StateFlow<ShopBalance> = combine(
+        _balanceBase, sales, expenses, repayments, supplierPayments
+    ) { base, saleList, expenseList, repayList, paymentList ->
+        if (base.setAt == 0L) {
+            ShopBalance()
+        } else {
+            val since = base.setAt
+            val s = saleList.filter { it.timestamp >= since }
+            val e = expenseList.filter { it.timestamp >= since }
+            val r = repayList.filter { it.timestamp >= since }
+            val p = paymentList.filter { it.timestamp >= since }
+            val cash = base.cash +
+                s.filter { it.paymentMode == "CASH" }.sumOf { it.totalAmount } +
+                r.filter { it.paymentMode == "CASH" }.sumOf { it.amount } -
+                e.filter { it.paymentMode == "CASH" }.sumOf { it.amount } -
+                p.filter { it.paymentMode == "CASH" }.sumOf { it.amount }
+            val online = base.online +
+                s.filter { it.paymentMode == "UPI" }.sumOf { it.totalAmount } +
+                r.filter { it.paymentMode != "CASH" }.sumOf { it.amount } -
+                e.filter { it.paymentMode != "CASH" }.sumOf { it.amount } -
+                p.filter { it.paymentMode == "UPI" || it.paymentMode == "BANK" }.sumOf { it.amount }
+            ShopBalance(hasBase = true, cash = cash, online = online, setAt = since)
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ShopBalance())
+
+    /** Owner says: "right now I have this much cash and this much online". Calculation continues from here. */
+    fun setShopBalance(cash: Double, online: Double) {
+        val base = BalanceBase(cash = cash, online = online, setAt = System.currentTimeMillis())
+        balancePrefs.edit()
+            .putString("cash", cash.toString())
+            .putString("online", online.toString())
+            .putLong("setAt", base.setAt)
+            .apply()
+        _balanceBase.value = base
+    }
 
     // Expected Cash = Opening Cash + Cash Sales + Cash Udhar Recovery - Cash Expenses
     val expectedCash = combine(openingCash, cashSalesAmount, udharCashRepaymentTotal, cashExpensesTotal) { opening, cashSale, recovery, expense ->

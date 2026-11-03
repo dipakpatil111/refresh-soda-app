@@ -770,6 +770,11 @@ fun DashboardScreen(
             }
         }
 
+        // SHOP BALANCE: CASH IN SHOP + ONLINE (OWNER ONLY)
+        if (currentUser?.role != "STAFF") {
+            item { ShopBalanceCard(viewModel) }
+        }
+
         // ANALYTICS + COMPANY PURCHASE REPORT (OWNER ONLY)
         if (currentUser?.role != "STAFF") {
             item {
@@ -2260,6 +2265,23 @@ fun InwardBillDialog(
         }.map { it.varietyName }
     }
 
+    // Picking (or typing) a saved variety fills its saved cost and MRP.
+    fun savedStockFor(name: String): IceCreamVarietyStock? = varietyStocks.firstOrNull {
+        it.categoryName.equals(selectedCategory, ignoreCase = true) &&
+            it.companyName.equals(selectedBrand, ignoreCase = true) &&
+            it.varietyName.equals(name, ignoreCase = true)
+    }
+    fun InwardBillItemDraft.withVariety(name: String, overwritePrices: Boolean): InwardBillItemDraft {
+        val named = copy(name = name)
+        val stock = savedStockFor(name) ?: return named
+        val keepManual = !overwritePrices && (costPrice > 0.0 || sellingPrice > 0.0)
+        if (keepManual) return named
+        val priced = named.applySavedVarietyPricing(stock)
+        // let the Amount field follow the new cost (it only stays fixed when the user typed an amount)
+        lineAmountTexts[id] = ""
+        return priced
+    }
+
     LaunchedEffect(editPurchase?.id) {
         val purchase = editPurchase ?: return@LaunchedEffect
         selectedCategory = purchase.category
@@ -2621,7 +2643,12 @@ fun InwardBillDialog(
                             ) {
                                 AppTextField(
                                     value = draft.name,
-                                    onValueChange = { draftItems[idx] = draft.copy(name = it) },
+                                    onValueChange = { typed ->
+                                        draftItems[idx] = if (trackBoxes && companyVarieties.any { it.equals(typed, ignoreCase = true) } &&
+                                            companyVarieties.none { it.length > typed.length && it.startsWith(typed, ignoreCase = true) }) {
+                                            draft.withVariety(typed, overwritePrices = false)
+                                        } else draft.copy(name = typed)
+                                    },
                                     label = if (trackBoxes) "Variety / Product name" else "Product name",
                                     singleLine = true,
                                     modifier = Modifier.weight(1f)
@@ -2641,7 +2668,7 @@ fun InwardBillDialog(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable {
-                                            draftItems[idx] = draft.copy(name = bestMatch.first!!)
+                                            draftItems[idx] = draft.withVariety(bestMatch.first!!, overwritePrices = true)
                                         }
                                 ) {
                                     Row(
@@ -2659,7 +2686,7 @@ fun InwardBillDialog(
                                     LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         items(companyVarieties) { cv ->
                                             SuggestionChip(
-                                                onClick = { draftItems[idx] = draft.copy(name = cv) },
+                                                onClick = { draftItems[idx] = draft.withVariety(cv, overwritePrices = true) },
                                                 label = { Text(cv, fontSize = 9.sp) }
                                             )
                                         }
@@ -3511,22 +3538,34 @@ fun AddVarietiesDialog(
                     singleLine = false,
                     modifier = Modifier.height(100.dp)
                 )
+                AppTextField(
+                    value = defaultLimitText,
+                    onValueChange = { if (it.all(Char::isDigit)) defaultLimitText = it },
+                    label = "Low Alert Limit",
+                    keyboardType = KeyboardType.Number,
+                    modifier = Modifier.fillMaxWidth()
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AppTextField(
-                        value = defaultLimitText,
-                        onValueChange = { if (it.all(Char::isDigit)) defaultLimitText = it },
-                        label = "Low Alert Limit",
-                        keyboardType = KeyboardType.Number,
+                        value = defaultCostText,
+                        onValueChange = { defaultCostText = it },
+                        label = "Cost ₹ / box",
+                        keyboardType = KeyboardType.Decimal,
                         modifier = Modifier.weight(1f)
                     )
                     AppTextField(
                         value = defaultMrpText,
                         onValueChange = { defaultMrpText = it },
-                        label = "MRP ₹ (Optional)",
+                        label = "MRP ₹",
                         keyboardType = KeyboardType.Decimal,
                         modifier = Modifier.weight(1f)
                     )
                 }
+                Text(
+                    "Cost aur MRP sab varieties ke liye save honge. Inward me variety chunte hi ye apne aap bhar jayenge.",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         },
         confirmButton = {
@@ -4541,7 +4580,7 @@ fun HisaabScreen(
     val isOwner by viewModel.isOwner.collectAsState()
     val subTabs = listOf(
         viewModel.getString("day_closing_title"),
-        viewModel.getString("daily_expenses"),
+        viewModel.getString("tab_khata"),
         viewModel.getString("paytm_settlement_title"),
         viewModel.getString("supplier_bills_title"),
         "Category & Menu Setup"
@@ -4568,7 +4607,7 @@ fun HisaabScreen(
 
         when (activeSubTab) {
             0 -> DayEndClosingView(viewModel, context)
-            1 -> DailyExpensesView(viewModel)
+            1 -> KhataScreen(viewModel)
             2 -> PaytmSettlementView(viewModel)
             3 -> if (isOwner) SupplierPurchasesView(viewModel, context)
             4 -> MenuAndCategoryManagementView(viewModel)
@@ -4694,174 +4733,6 @@ fun DayEndClosingView(viewModel: ShopViewModel, context: Context) {
                 }
             }
         }
-    }
-}
-
-// ---------------- SUBVIEW 2: COMPREHENSIVE DAILY & MONTHLY EXPENSES ----------------
-@Composable
-fun DailyExpensesView(viewModel: ShopViewModel) {
-    val expenses by viewModel.expenses.collectAsState()
-    val totalExpenses by viewModel.totalExpensesAmount.collectAsState()
-    val categoryExpMap by viewModel.categoryExpenses.collectAsState()
-    var showAddDialog by remember { mutableStateOf(false) }
-
-    val categories = listOf(
-        "❄️ Ice",
-        "🍋 Lemons",
-        "🥤 Syrup & Gas",
-        "🥛 Milk & Shake",
-        "🧻 Glasses & Straws",
-        "💡 Electricity Bill",
-        "🏪 Shop Rent",
-        "👷 Labor / Salary",
-        "🔧 Machine Repair",
-        "📦 Other Miscellaneous"
-    )
-
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        // TOP EXPENSE SUMMARY CARD
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.appColors.dangerContainer),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text("Total Expenses Today", fontSize = 12.sp, color = MaterialTheme.appColors.onDangerContainer, fontWeight = FontWeight.Bold)
-                        Text("₹${totalExpenses.toInt()}", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.appColors.danger)
-                    }
-                    Button(
-                        onClick = { showAddDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.appColors.danger, contentColor = MaterialTheme.appColors.onDanger),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text(viewModel.getString("add_expense"))
-                    }
-                }
-            }
-        }
-
-        // CATEGORY BREAKDOWN CHIPS
-        if (categoryExpMap.isNotEmpty()) {
-            item {
-                Text("Expense Breakdown:", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            }
-            item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(categoryExpMap.entries.groupBy({ expenseCategoryLabel(it.key) }, { it.value }).mapValues { it.value.sum() }.entries.toList()) { entry ->
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(8.dp)) {
-                                Text(entry.key, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("₹${entry.value.toInt()}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.appColors.danger)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
-            Text("Recent Expenses", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-        }
-
-        if (expenses.isEmpty()) {
-            item {
-                Text("No expenses recorded today.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
-            }
-        } else {
-            items(expenses) { exp ->
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(exp.title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text("${expenseCategoryLabel(exp.category)} • Mode: ${exp.paymentMode}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("₹${exp.amount.toInt()}", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = MaterialTheme.appColors.danger)
-                            IconButton(onClick = { viewModel.deleteExpense(exp) }) {
-                                Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = MaterialTheme.appColors.danger)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (showAddDialog) {
-        var title by remember { mutableStateOf("") }
-        var category by remember { mutableStateOf(categories.first()) }
-        var amountText by remember { mutableStateOf("") }
-        var paymentMode by remember { mutableStateOf("CASH") }
-
-        AlertDialog(
-            onDismissRequest = { showAddDialog = false },
-            title = { Text("+ Add Expense", fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Select category:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        items(categories) { cat ->
-                            FilterChip(
-                                selected = category == cat,
-                                onClick = {
-                                    category = cat
-                                    if (title.isBlank()) title = cat.substringAfter(" ").trim()
-                                },
-                                label = { Text(cat, fontSize = 10.sp) }
-                            )
-                        }
-                    }
-
-                    OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title / Note") }, singleLine = true)
-                    OutlinedTextField(value = amountText, onValueChange = { amountText = it }, label = { Text("Amount (₹)") }, singleLine = true)
-
-                    Text("Paid from", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = paymentMode == "CASH",
-                            onClick = { paymentMode = "CASH" },
-                            label = { Text("💵 Cash (Till)") }
-                        )
-                        FilterChip(
-                            selected = paymentMode == "UPI",
-                            onClick = { paymentMode = "UPI" },
-                            label = { Text("📱 Bank / UPI") }
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    val amt = amountText.toDoubleOrNull() ?: 0.0
-                    if (title.isNotBlank() && amt > 0) {
-                        viewModel.addExpense(title, category, amt, paymentMode)
-                        showAddDialog = false
-                    }
-                }) {
-                    Text("Save")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) { Text("Cancel") }
-            }
-        )
     }
 }
 

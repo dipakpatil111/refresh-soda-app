@@ -33,6 +33,7 @@ enum class Screen(val titleKey: String, val icon: ImageVector) {
     Inventory("tab_stock", Icons.Default.Inventory2),
     MaalAavak("tab_maal_aavak", Icons.Default.LocalShipping),
     Khata("tab_khata", Icons.Default.MenuBook),
+    Expenses("tab_expenses", Icons.Default.Receipt),
     Hisaab("tab_hisaab", Icons.Default.AccountBalanceWallet),
     Settings("tab_settings", Icons.Default.Settings),
     Analytics("analytics_title", Icons.Default.Analytics),
@@ -97,7 +98,7 @@ class MainActivity : ComponentActivity() {
                         },
                         bottomBar = {
                             NavigationBar {
-                                listOf(Screen.Dashboard, Screen.POS, Screen.Inventory, Screen.MaalAavak, Screen.Khata, Screen.Hisaab).forEach { screen ->
+                                listOf(Screen.Dashboard, Screen.POS, Screen.Inventory, Screen.MaalAavak, Screen.Expenses, Screen.Hisaab).forEach { screen ->
                                     val labelText = viewModel.getString(screen.titleKey)
                                     NavigationBarItem(selected = currentScreen == screen, onClick = { currentScreen = screen }, icon = { Icon(screen.icon, contentDescription = labelText) }, label = { Text(labelText, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) })
                                 }
@@ -117,6 +118,7 @@ class MainActivity : ComponentActivity() {
                                 Screen.Inventory -> InventoryScreen(viewModel, { currentScreen = Screen.MaalAavak })
                                 Screen.MaalAavak -> MaalAavakScreen(viewModel)
                                 Screen.Khata -> KhataScreen(viewModel)
+                                Screen.Expenses -> ExpensesScreen(viewModel)
                                 Screen.Hisaab -> HisaabScreen(viewModel) { currentScreen = Screen.Settings }
                                 Screen.Settings -> SettingsScreen(viewModel)
                                 Screen.Analytics -> AnalyticsScreen(viewModel)

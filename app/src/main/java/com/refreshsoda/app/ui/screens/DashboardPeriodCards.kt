@@ -216,7 +216,7 @@ fun DashboardDateFilter(viewModel: ShopViewModel, hideProfit: Boolean) {
 }
 
 /** The picker returns midnight UTC of the chosen day; convert that calendar day to local midnight. */
-private fun utcDayToLocalStart(utcMillis: Long): Long {
+internal fun utcDayToLocalStart(utcMillis: Long): Long {
     val utc = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = utcMillis }
     return Calendar.getInstance().apply {
         clear()
