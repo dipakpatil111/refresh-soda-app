@@ -1047,7 +1047,8 @@ fun POSScreen(viewModel: ShopViewModel) {
     val cart by viewModel.cart.collectAsState()
     val khataList by viewModel.khataList.collectAsState()
     val discount by viewModel.discount.collectAsState()
-    val topFavorites by viewModel.topFavoriteProducts.collectAsState(initial = emptyList())
+    val heldBills by viewModel.heldBills.collectAsState()
+    var heldBillToDiscard by remember { mutableStateOf<HeldBill?>(null) }
     val lastSaleForUndo by viewModel.lastSaleForUndo.collectAsState()
 
     val shopProfile by viewModel.userProfile.collectAsState()
@@ -1077,7 +1078,16 @@ fun POSScreen(viewModel: ShopViewModel) {
         }
     }
 
-    var selectedCategoryName by remember { mutableStateOf("All") }
+    // Soda is the default tab; falls back to All if the shop has no category named Soda.
+    var selectedCategoryName by remember { mutableStateOf("Soda") }
+    LaunchedEffect(categories) {
+        if (categories.isNotEmpty() && selectedCategoryName != "All" &&
+            categories.none { it.name.equals(selectedCategoryName, ignoreCase = true) }
+        ) {
+            selectedCategoryName = "All"
+        }
+    }
+    val salesRank by viewModel.productSalesRank.collectAsState()
     var selectedCompany by remember { mutableStateOf<SubCategory?>(null) }
     var companyAmountText by remember { mutableStateOf("") }
     var showAddCategoryDialog by remember { mutableStateOf(false) }
@@ -1095,18 +1105,18 @@ fun POSScreen(viewModel: ShopViewModel) {
     val itemModeProducts = products.filter { product ->
         categories.none { it.trackBoxes && it.name.equals(product.category, ignoreCase = true) }
     }
-    val itemModeFavorites = topFavorites.filter { product ->
-        categories.none { it.trackBoxes && it.name.equals(product.category, ignoreCase = true) }
-    }
     val selectedCategoryIsIceCream = categories.firstOrNull {
         it.name.equals(selectedCategoryName, ignoreCase = true)
     }?.trackBoxes == true
-    val selectedItemFavorites = itemModeFavorites.filter { product ->
-        selectedCategoryName == "All" || product.category.equals(selectedCategoryName, ignoreCase = true)
-    }
+    // Best-selling items first (last 30 days, then all-time); unsold items keep category / name order.
     val selectedItemProducts = itemModeProducts.filter { product ->
         selectedCategoryName == "All" || product.category.equals(selectedCategoryName, ignoreCase = true)
-    }
+    }.sortedWith(
+        compareByDescending<Product> { salesRank["${it.category.trim()}|${it.name.trim()}".lowercase()]?.first ?: 0 }
+            .thenByDescending { salesRank["${it.category.trim()}|${it.name.trim()}".lowercase()]?.second ?: 0 }
+            .thenBy { it.category.lowercase() }
+            .thenBy { it.name.lowercase() }
+    )
 
     Column(
         modifier = Modifier
@@ -1175,13 +1185,22 @@ fun POSScreen(viewModel: ShopViewModel) {
                         letterSpacing = 1.sp
                     )
                     if (cart.isNotEmpty()) {
-                        Text(
-                            viewModel.getString("clear_cart"),
-                            fontSize = 12.sp,
-                            color = MaterialTheme.appColors.danger,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.clickable { viewModel.clearCart() }
-                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "⏸ Hold",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.clickable { viewModel.holdCurrentBill() }
+                            )
+                            Text(
+                                viewModel.getString("clear_cart"),
+                                fontSize = 12.sp,
+                                color = MaterialTheme.appColors.danger,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.clickable { viewModel.clearCart() }
+                            )
+                        }
                     }
                 }
 
@@ -1288,6 +1307,69 @@ fun POSScreen(viewModel: ShopViewModel) {
             }
         }
 
+        // HELD (PARKED) BILLS: tap to bring a customer's order back to the counter
+        if (heldBills.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.appColors.warningContainer),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                    Text(
+                        "⏸ On hold (${heldBills.size}) — tap to open",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.appColors.onWarningContainer
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(heldBills, key = { it.id }) { bill ->
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                modifier = Modifier.clickable { viewModel.resumeHeldBill(bill.id) }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(start = 10.dp, top = 4.dp, bottom = 4.dp, end = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text("Bill ${bill.number} • ₹${bill.total.toInt()}", fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                        Text(
+                                            "${bill.itemCount} items • " + bill.items.take(2).joinToString(", ") { it.product.name } +
+                                                if (bill.items.size > 2) "…" else "",
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1
+                                        )
+                                    }
+                                    IconButton(onClick = { heldBillToDiscard = bill }, modifier = Modifier.size(30.dp)) {
+                                        Icon(Icons.Default.Close, contentDescription = "Discard held bill", modifier = Modifier.size(16.dp), tint = MaterialTheme.appColors.danger)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        heldBillToDiscard?.let { bill ->
+            AlertDialog(
+                onDismissRequest = { heldBillToDiscard = null },
+                title = { Text("Discard Bill ${bill.number}?", fontWeight = FontWeight.Bold) },
+                text = { Text("${bill.itemCount} items • ₹${bill.total.toInt()} ka hold kiya hua bill hata diya jayega.") },
+                confirmButton = {
+                    Button(
+                        onClick = { viewModel.discardHeldBill(bill.id); heldBillToDiscard = null },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.appColors.danger, contentColor = MaterialTheme.appColors.onDanger)
+                    ) { Text("Discard") }
+                },
+                dismissButton = { TextButton(onClick = { heldBillToDiscard = null }) { Text("Cancel") } }
+            )
+        }
+
         Spacer(modifier = Modifier.height(8.dp))
 
         // QUICK ADD-ONS
@@ -1307,42 +1389,6 @@ fun POSScreen(viewModel: ShopViewModel) {
                     },
                     label = { Text(label, fontSize = 11.sp, maxLines = 1, softWrap = false) }
                 )
-            }
-        }
-
-        // TOP 8 FAVOURITES (QUICK 1-TAP COUNTER)
-        if (!selectedCategoryIsIceCream &&
-            (selectedItemFavorites.isNotEmpty() || selectedItemProducts.isNotEmpty())
-        ) {
-            val favsToShow = if (selectedItemFavorites.isNotEmpty()) selectedItemFavorites.take(8) else selectedItemProducts.take(6)
-            Spacer(modifier = Modifier.height(4.dp))
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
-                    Text("⭐ Best Sellers (1-tap +1):", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.height(3.dp))
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(favsToShow) { fav ->
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.surface,
-                                modifier = Modifier.clickable { viewModel.addToCart(fav) }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Text(fav.name, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                    Text("+1 • ₹${fav.price.toInt()}", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.ExtraBold)
-                                }
-                            }
-                        }
-                    }
-                }
             }
         }
 

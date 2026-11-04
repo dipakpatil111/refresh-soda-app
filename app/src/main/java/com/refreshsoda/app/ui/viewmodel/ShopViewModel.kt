@@ -37,6 +37,18 @@ data class CartItem(
     val total: Double get() = (customPrice + addOnCost) * quantity
 }
 
+/** A customer's order that was parked ("hold") so the next customer can be served first. */
+data class HeldBill(
+    val id: String,
+    val number: Int,
+    val items: List<CartItem>,
+    val discount: Double,
+    val heldAt: Long
+) {
+    val total: Double get() = (items.sumOf { it.total } - discount).coerceAtLeast(0.0)
+    val itemCount: Int get() = items.sumOf { it.quantity }
+}
+
 data class TopItemStats(
     val name: String = "N/A",
     val pieces: Int = 0,
@@ -450,32 +462,40 @@ class ShopViewModel(
     private var saleUndoExpiryJob: Job? = null
 
     // Quick Favourites / Top 8 Products for Fast POS
-    val topFavoriteProducts = combine(sales, products) { salesList, productList ->
-        val countMap = mutableMapOf<String, Int>()
+    /**
+     * How well each product sells: key = "category|name" (lowercase), value = (units sold in last 30 days, units sold ever).
+     * The POS screen sorts items by this so top sellers come first; recent sales win so the order follows the season.
+     */
+    val productSalesRank: StateFlow<Map<String, Pair<Int, Int>>> = sales.map { salesList ->
+        val recentSince = System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000
+        val recent = mutableMapOf<String, Int>()
+        val ever = mutableMapOf<String, Int>()
         salesList.forEach { sale ->
-            if (sale.itemsDetails.isNotBlank()) {
-                sale.itemsDetails.split(";").forEach { itemStr ->
-                    val parts = itemStr.split("|")
-                    if (parts.size >= 3) {
-                        val name = parts[1].trim()
-                        val qty = parts[2].toIntOrNull() ?: 1
-                        countMap[name] = (countMap[name] ?: 0) + qty
-                    }
+            if (sale.itemsDetails.isBlank()) return@forEach
+            sale.itemsDetails.split(";").forEach { itemStr ->
+                val parts = itemStr.split("|")
+                if (parts.size >= 3) {
+                    val key = "${parts[0].trim()}|${parts[1].trim()}".lowercase()
+                    val qty = parts[2].toIntOrNull() ?: 1
+                    ever[key] = (ever[key] ?: 0) + qty
+                    if (sale.timestamp >= recentSince) recent[key] = (recent[key] ?: 0) + qty
                 }
             }
         }
-        val favList = mutableListOf<Product>()
-        if (countMap.isNotEmpty()) {
-            val sortedNames = countMap.entries.sortedByDescending { it.value }.map { it.key }
-            sortedNames.take(8).forEach { name ->
-                val prod = productList.firstOrNull { it.name.equals(name, ignoreCase = true) }
-                if (prod != null) favList.add(prod)
-            }
-        }
-        if (favList.size < 8) {
-            productList.filter { !favList.contains(it) }.take(8 - favList.size).forEach { favList.add(it) }
-        }
-        favList
+        ever.mapValues { (key, total) -> Pair(recent[key] ?: 0, total) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    /** Top 8 sellers for the 1-tap "Best Sellers" strip (recent sales first, then all-time). */
+    val topFavoriteProducts = combine(productSalesRank, products) { rank, productList ->
+        fun rankOf(p: Product) = rank["${p.category.trim()}|${p.name.trim()}".lowercase()]
+        val sold = productList
+            .filter { (rankOf(it)?.second ?: 0) > 0 }
+            .sortedWith(
+                compareByDescending<Product> { rankOf(it)?.first ?: 0 }
+                    .thenByDescending { rankOf(it)?.second ?: 0 }
+            )
+            .take(8)
+        if (sold.size >= 8) sold else sold + productList.filter { it !in sold }.take(8 - sold.size)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // ---------------- DASHBOARD CALCULATIONS ----------------
@@ -1078,6 +1098,117 @@ class ShopViewModel(
     fun clearCart() {
         _cart.value = emptyList()
         _discount.value = 0.0
+    }
+
+    // ---------------- HOLD / PARK BILL ----------------
+    private val holdPrefs: SharedPreferences =
+        context.applicationContext.getSharedPreferences("held_bills", Context.MODE_PRIVATE)
+
+    private val _heldBills = MutableStateFlow(loadHeldBills())
+    val heldBills: StateFlow<List<HeldBill>> = _heldBills.asStateFlow()
+
+    private fun loadHeldBills(): List<HeldBill> = try {
+        val arr = org.json.JSONArray(holdPrefs.getString("bills", "[]") ?: "[]")
+        (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            val itemsJson = o.getJSONArray("items")
+            HeldBill(
+                id = o.getString("id"),
+                number = o.getInt("number"),
+                discount = o.getDouble("discount"),
+                heldAt = o.getLong("heldAt"),
+                items = (0 until itemsJson.length()).map { j ->
+                    val it = itemsJson.getJSONObject(j)
+                    val addOns = it.getJSONArray("addOns")
+                    CartItem(
+                        product = Product(
+                            id = it.getString("pid"),
+                            name = it.getString("name"),
+                            category = it.getString("category"),
+                            brand = it.optString("brand", ""),
+                            price = it.getDouble("price"),
+                            costPrice = it.optDouble("costPrice", 0.0)
+                        ),
+                        quantity = it.getInt("qty"),
+                        addOns = (0 until addOns.length()).map { k -> addOns.getString(k) },
+                        addOnCost = it.getDouble("addOnCost"),
+                        customPrice = it.getDouble("customPrice")
+                    )
+                }
+            )
+        }
+    } catch (e: Exception) {
+        emptyList()
+    }
+
+    private fun persistHeldBills(bills: List<HeldBill>) {
+        val arr = org.json.JSONArray()
+        bills.forEach { b ->
+            val items = org.json.JSONArray()
+            b.items.forEach { c ->
+                items.put(
+                    org.json.JSONObject()
+                        .put("pid", c.product.id).put("name", c.product.name)
+                        .put("category", c.product.category).put("brand", c.product.brand)
+                        .put("price", c.product.price).put("costPrice", c.product.costPrice)
+                        .put("qty", c.quantity).put("addOnCost", c.addOnCost)
+                        .put("customPrice", c.customPrice)
+                        .put("addOns", org.json.JSONArray(c.addOns))
+                )
+            }
+            arr.put(
+                org.json.JSONObject()
+                    .put("id", b.id).put("number", b.number).put("discount", b.discount)
+                    .put("heldAt", b.heldAt).put("items", items)
+            )
+        }
+        holdPrefs.edit().putString("bills", arr.toString()).apply()
+    }
+
+    private fun setHeldBills(bills: List<HeldBill>) {
+        _heldBills.value = bills
+        persistHeldBills(bills)
+    }
+
+    /** Parks the current cart as a held bill and empties the counter for the next customer. */
+    fun holdCurrentBill() {
+        val items = _cart.value
+        if (items.isEmpty()) return
+        val current = _heldBills.value
+        val number = (1..99).firstOrNull { n -> current.none { it.number == n } } ?: (current.size + 1)
+        val bill = HeldBill(
+            id = java.util.UUID.randomUUID().toString(),
+            number = number,
+            items = items,
+            discount = _discount.value,
+            heldAt = System.currentTimeMillis()
+        )
+        setHeldBills(current + bill)
+        clearCart()
+    }
+
+    /** Brings a held bill back to the counter. If the counter already has items they are parked, never lost. */
+    fun resumeHeldBill(id: String) {
+        val bill = _heldBills.value.firstOrNull { it.id == id } ?: return
+        var remaining = _heldBills.value.filter { it.id != id }
+        val currentItems = _cart.value
+        if (currentItems.isNotEmpty()) {
+            val number = (1..99).firstOrNull { n -> remaining.none { it.number == n } && n != bill.number } ?: bill.number
+            remaining = remaining + HeldBill(
+                id = java.util.UUID.randomUUID().toString(),
+                number = number,
+                items = currentItems,
+                discount = _discount.value,
+                heldAt = System.currentTimeMillis()
+            )
+        }
+        setHeldBills(remaining)
+        _cart.value = bill.items
+        _discount.value = bill.discount
+    }
+
+    fun discardHeldBill(id: String) {
+        setHeldBills(_heldBills.value.filter { it.id != id })
     }
 
     fun completeOrder(paymentMode: String, customerName: String? = null) {
