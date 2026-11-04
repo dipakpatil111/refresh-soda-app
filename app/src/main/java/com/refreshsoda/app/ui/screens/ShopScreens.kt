@@ -58,6 +58,8 @@ import com.refreshsoda.app.data.model.IceCreamVarietyStock
 import com.refreshsoda.app.data.model.VarietyInsightsItem
 import com.refreshsoda.app.data.model.CompanyInsightsItem
 import com.refreshsoda.app.ui.viewmodel.ShopViewModel
+import com.refreshsoda.app.ui.viewmodel.HeldBill
+import com.refreshsoda.app.ui.viewmodel.CartItem
 import com.refreshsoda.app.ui.viewmodel.InwardRequest
 import com.refreshsoda.app.ui.viewmodel.MAX_INWARD_QTY
 import com.refreshsoda.app.ui.viewmodel.UNASSIGNED_VARIETY
@@ -1355,14 +1357,15 @@ fun POSScreen(viewModel: ShopViewModel) {
             }
         }
 
-        heldBillToDiscard?.let { bill ->
+        val billToDiscard = heldBillToDiscard
+        if (billToDiscard != null) {
             AlertDialog(
                 onDismissRequest = { heldBillToDiscard = null },
-                title = { Text("Discard Bill ${bill.number}?", fontWeight = FontWeight.Bold) },
-                text = { Text("${bill.itemCount} items • ₹${bill.total.toInt()} ka hold kiya hua bill hata diya jayega.") },
+                title = { Text("Discard Bill ${billToDiscard.number}?", fontWeight = FontWeight.Bold) },
+                text = { Text("${billToDiscard.itemCount} items • ₹${billToDiscard.total.toInt()} ka hold kiya hua bill hata diya jayega.") },
                 confirmButton = {
                     Button(
-                        onClick = { viewModel.discardHeldBill(bill.id); heldBillToDiscard = null },
+                        onClick = { viewModel.discardHeldBill(billToDiscard.id); heldBillToDiscard = null },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.appColors.danger, contentColor = MaterialTheme.appColors.onDanger)
                     ) { Text("Discard") }
                 },
